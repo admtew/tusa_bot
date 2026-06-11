@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Тусы</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #141420);
+    --card: var(--tg-theme-secondary-bg-color, #1e1e2e);
+    --text: var(--tg-theme-text-color, #ffffff);
+    --hint: var(--tg-theme-hint-color, #9a9ab0);
+    --accent: var(--tg-theme-button-color, #7c5cff);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --ok: #2ecc71; --warn: #f39c12; --bad: #e74c3c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text);
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         padding-bottom: 76px; }
+  .page { padding: 16px; max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 14px; }
+  h2 { font-size: 18px; margin: 14px 0 8px; }
+  .hint { color: var(--hint); font-size: 13px; }
+
+  /* карточки ленты */
+  .card { background: var(--card); border-radius: 16px; padding: 14px; margin-bottom: 12px;
+          display: flex; gap: 12px; align-items: center; cursor: pointer; }
+  .date-badge { min-width: 52px; height: 56px; border-radius: 12px; background: var(--accent);
+                color: var(--accent-text); display: flex; flex-direction: column;
+                align-items: center; justify-content: center; font-weight: 700; }
+  .date-badge .d { font-size: 20px; line-height: 1; }
+  .date-badge .m { font-size: 11px; text-transform: uppercase; opacity: .85; }
+  .card .info { flex: 1; min-width: 0; }
+  .card .title { font-weight: 600; font-size: 15px; white-space: nowrap;
+                 overflow: hidden; text-overflow: ellipsis; }
+  .card .meta { color: var(--hint); font-size: 13px; margin-top: 3px; }
+  .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px;
+          background: rgba(124,92,255,.18); color: var(--accent); margin-top: 6px; margin-right: 4px; }
+  .pill.soldout { background: rgba(231,76,60,.15); color: var(--bad); }
+
+  /* кнопки */
+  .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 14px;
+         background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 600;
+         cursor: pointer; margin-top: 10px; text-align: center; text-decoration: none; }
+  .btn.secondary { background: var(--card); color: var(--text); }
+  .btn:disabled { opacity: .5; }
+
+  /* формы */
+  label { display: block; font-size: 13px; color: var(--hint); margin: 12px 0 4px; }
+  input, textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #33334a;
+                    background: var(--card); color: var(--text); font-size: 15px; outline: none; }
+  textarea { min-height: 90px; resize: vertical; }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  .row2 { display: flex; gap: 10px; } .row2 > div { flex: 1; }
+
+  /* билет */
+  .ticket { background: var(--card); border-radius: 20px; padding: 20px; text-align: center;
+            margin-bottom: 16px; }
+  .qr-box { background: #fff; border-radius: 14px; padding: 14px; display: inline-block; margin: 12px 0; }
+  .status-used { color: var(--hint); } .status-ok { color: var(--ok); } .status-pend { color: var(--warn); }
+
+  /* нижняя навигация */
+  .nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex;
+         background: var(--card); border-top: 1px solid #2a2a3d; padding: 8px 0 max(8px, env(safe-area-inset-bottom)); }
+  .nav button { flex: 1; background: none; border: none; color: var(--hint); font-size: 11px;
+                cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .nav button.active { color: var(--accent); }
+  .nav .ico { font-size: 20px; }
+
+  .guest-row { display: flex; align-items: center; justify-content: space-between;
+               background: var(--card); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .guest-row .small-btn { padding: 6px 12px; border-radius: 10px; border: none;
+                          background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  #scan-result { margin-top: 14px; padding: 14px; border-radius: 12px; font-weight: 600;
+                 text-align: center; display: none; }
+  #reader { border-radius: 16px; overflow: hidden; }
+  .progress { background: var(--card); border-radius: 12px; padding: 12px; margin-top: 10px; }
+  .bar { height: 8px; background: #2a2a3d; border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
+  .empty { text-align: center; color: var(--hint); padding: 48px 16px; }
+  .empty .big { font-size: 44px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div id="app" class="page"></div>
+
+<div class="nav">
+  <button id="nav-feed" onclick="go('feed')"><span class="ico">🎉</span>Тусы</button>
+  <button id="nav-tickets" onclick="go('tickets')"><span class="ico">🎟</span>Билеты</button>
+  <button id="nav-create" onclick="go('create')"><span class="ico">➕</span>Создать</button>
+  <button id="nav-my" onclick="go('my')"><span class="ico">🪩</span>Мои тусы</button>
+</div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready(); tg.expand();
+const app = document.getElementById('app');
+let scanner = null;
+
+const MONTHS = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const fmtDate = ts => { const d = new Date(ts * 1000);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+const esc = s => (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({'X-Init-Data': tg.initData, 'Content-Type': 'application/json'}, opts.headers);
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Ошибка сети');
+  return data;
+}
+const toast = msg => tg.showAlert ? tg.showAlert(msg) : alert(msg);
+
+function go(route) { stopScanner(); location.hash = route; }
+function setNav(active) {
+  ['feed','tickets','create','my'].forEach(n => {
+    const el = document.getElementById('nav-' + n);
+    if (el) el.classList.toggle('active', n === active);
+  });
+}
+function stopScanner() {
+  if (scanner) { scanner.stop().catch(()=>{}); scanner = null; }
+}
+
+/* ---------- ЛЕНТА ---------- */
+async function renderFeed() {
+  setNav('feed');
+  app.innerHTML = '<h1>Тусы 🎉</h1><div class="hint">Загружаю...</div>';
+  const events = await api('/api/events');
+  if (!events.length) {
+    app.innerHTML = '<h1>Тусы 🎉</h1><div class="empty"><div class="big">🪩</div>Пока пусто.<br>Стань первым — создай тусу!</div>';
+    return;
+  }
+  let html = '<h1>Тусы 🎉</h1>';
+  for (const e of events) {
+    const d = new Date(e.starts_at * 1000);
+    html += `<div class="card" onclick="go('event/${e.id}')">
+      <div class="date-badge"><div class="d">${d.getDate()}</div><div class="m">${MONTHS[d.getMonth()]}</div></div>
+      <div class="info">
+        <div class="title">${esc(e.title)}</div>
+        <div class="meta">📍 ${esc(e.area) || 'место уточняется'} · ${esc(e.price_text) || 'free'}</div>
+        <div>
+          ${e.age_limit ? `<span class="pill">${esc(e.age_limit)}</span>` : ''}
+          ${e.capacity ? `<span class="pill ${e.sold_out ? 'soldout' : ''}">${e.sold_out ? 'sold out' : `мест: ${e.capacity - e.taken}`}</span>` : ''}
+          ${e.refs_needed ? `<span class="pill">free за ${e.refs_needed} друз.</span>` : ''}
+        </div>
+      </div></div>`;
+  }
+  app.innerHTML = html;
+}
+
+/* ---------- СТРАНИЦА ИВЕНТА ---------- */
+async function renderEvent(id) {
+  setNav('feed');
+  app.innerHTML = '<div class="hint">Загружаю...</div>';
+  const e = await api('/api/events/' + id);
+  let html = `<h1>${esc(e.title)}</h1>
+    <div class="hint">🗓 ${fmtDate(e.starts_at)} · 📍 ${esc(e.area) || 'место уточняется'}
+    ${e.age_limit ? ' · ' + esc(e.age_limit) : ''}</div>
+    <p style="margin:12px 0; line-height:1.5;">${esc(e.description)}</p>`;
+
+  if (e.capacity) {
+    html += `<div class="hint">Мест осталось: <b>${Math.max(0, e.capacity - e.taken)}</b> из ${e.capacity}</div>`;
+  }
+
+  if (e.my_ticket) {
+    const st = e.my_ticket.kind === 'paid_pending'
+      ? '<span class="status-pend">⏳ ждём подтверждения оплаты</span>'
+      : (e.my_ticket.status === 'used' ? '<span class="status-used">билет использован</span>'
+                                       : '<span class="status-ok">✅ билет у тебя!</span>');
+    html += `<div class="progress">${st}</div>
+             <button class="btn" onclick="go('tickets')">Показать билет 🎟</button>`;
+  } else if (e.sold_out) {
+    html += `<div class="progress"><span class="status-pend">Мест больше нет 😢</span></div>`;
+  } else {
+    if (e.refs_needed > 0) {
+      const pct = Math.min(100, Math.round(e.my_refs / e.refs_needed * 100));
+      html += `<div class="progress">Free-проходка: приведи друзей по своей ссылке —
+        <b>${e.my_refs} из ${e.refs_needed}</b>
+        <div class="bar"><div style="width:${pct}%"></div></div>
+        <div class="hint" style="margin-top:6px">Друг должен запустить бота по твоей ссылке${e.channel ? ' и подписаться на @' + esc(e.channel) : ''}.</div>
+      </div>
+      <button class="btn" onclick="shareRef('${e.ref_link}', '${esc(e.title)}')">Позвать друзей 📣</button>`;
+      if (e.my_refs >= e.refs_needed) {
+        html += `<button class="btn" onclick="claimFree(${e.id})">Забрать free-билет 🎟</button>`;
+      }
+    } else if (!e.pay_url) {
+      html += `<button class="btn" onclick="claimFree(${e.id})">Иду! Забрать билет 🎟</button>`;
+    }
+    if (e.pay_url) {
+      html += `<a class="btn" href="${esc(e.pay_url)}" target="_blank">Купить билет · ${esc(e.price_text) || ''} 💳</a>
+        <button class="btn secondary" onclick="claimPaid(${e.id})">Я купил билет ✔️</button>
+        <div class="hint" style="margin-top:6px">После покупки жми «Я купил» — организатор подтвердит, и QR появится во вкладке «Билеты».</div>`;
+    }
+    if (e.channel && !e.subscribed) {
+      html += `<a class="btn secondary" href="https://t.me/${esc(e.channel)}" target="_blank">Подписаться на @${esc(e.channel)}</a>`;
+    }
+  }
+
+  html += `<button class="btn secondary" onclick="shareEvent('${e.share_link}', '${esc(e.title)}')">Поделиться тусой 🔗</button>`;
+  if (e.is_mine) html += `<button class="btn secondary" onclick="go('org/${e.id}')">Панель организатора 🪩</button>`;
+  app.innerHTML = html;
+}
+
+function shareRef(link, title) {
+  const text = `Го на «${title}»! 🎉 Заходи по моей ссылке:`;
+  tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+}
+function shareEvent(link, title) {
+  tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent('Смотри какая туса: ' + title)}`);
+}
+async function claimFree(id) {
+  try { await api(`/api/events/${id}/claim_free`, {method: 'POST', body: '{}'});
+        tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
+        go('tickets'); }
+  catch (err) { toast(err.message); }
+}
+async function claimPaid(id) {
+  try { await api(`/api/events/${id}/claim_paid`, {method: 'POST', body: '{}'});
+        toast('Заявка отправлена! Организатор подтвердит оплату, и билет появится во вкладке «Билеты».');
+        renderEvent(id); }
+  catch (err) { toast(err.message); }
+}
+
+/* ---------- МОИ БИЛЕТЫ ---------- */
+async function renderTickets() {
+  setNav('tickets');
+  app.innerHTML = '<h1>Мои билеты 🎟</h1><div class="hint">Загружаю...</div>';
+  const tickets = await api('/api/me/tickets');
+  if (!tickets.length) {
+    app.innerHTML = '<h1>Мои билеты 🎟</h1><div class="empty"><div class="big">🎟</div>Билетов пока нет.<br>Выбери тусу в ленте!</div>';
+    return;
+  }
+  let html = '<h1>Мои билеты 🎟</h1>';
+  tickets.forEach((t, i) => {
+    const pend = t.kind === 'paid_pending';
+    const used = t.status === 'used';
+    html += `<div class="ticket">
+      <div style="font-weight:700; font-size:17px;">${esc(t.title)}</div>
+      <div class="hint">🗓 ${fmtDate(t.starts_at)} · 📍 ${esc(t.area)}</div>
+      ${pend ? '<div class="status-pend" style="margin-top:10px;">⏳ Ждём подтверждения оплаты</div>'
+             : used ? '<div class="status-used" style="margin-top:10px;">Использован</div>'
+                    : `<div class="qr-box"><div id="qr-${i}"></div></div>
+                       <div class="hint">Покажи QR на входе. Адрес придёт в чат с ботом незадолго до начала 📍</div>`}
+    </div>`;
+  });
+  app.innerHTML = html;
+  tickets.forEach((t, i) => {
+    if (t.kind !== 'paid_pending' && t.status !== 'used') {
+      new QRCode(document.getElementById('qr-' + i), {text: t.code, width: 180, height: 180});
+    }
+  });
+}
+
+/* ---------- СОЗДАНИЕ ИВЕНТА ---------- */
+function renderCreate() {
+  setNav('create');
+  app.innerHTML = `<h1>Создать тусу 🪩</h1>
+    <label>Название *</label><input id="f-title" maxlength="80" placeholder="Например: NEON PARTY">
+    <label>Описание</label><textarea id="f-desc" placeholder="Что за движ, что будет, дресс-код..."></textarea>
+    <div class="row2">
+      <div><label>Дата *</label><input id="f-date" type="date"></div>
+      <div><label>Время *</label><input id="f-time" type="time" value="18:00"></div>
+    </div>
+    <label>Район / метро (видно всем)</label><input id="f-area" placeholder="м. Курская">
+    <label>Точный адрес (придёт гостям за пару часов до начала)</label><input id="f-addr" placeholder="Басманный пер. 8с1">
+    <div class="row2">
+      <div><label>Лимит мест (0 = без лимита)</label><input id="f-cap" type="number" value="0" min="0"></div>
+      <div><label>Возраст</label><input id="f-age" placeholder="14+ / 18+"></div>
+    </div>
+    <label>Цена текстом (пусто = free)</label><input id="f-price" placeholder="от 500 ₽">
+    <label>Ссылка на оплату (qtickets и т.п.)</label><input id="f-pay" placeholder="https://...">
+    <label>Free-вход: сколько друзей привести (0 = выкл)</label><input id="f-refs" type="number" value="0" min="0">
+    <label>Канал для проверки подписки, без @ (бот должен быть админом)</label><input id="f-ch" placeholder="mychannel">
+    <button class="btn" onclick="submitEvent()">Опубликовать 🚀</button>`;
+}
+async function submitEvent() {
+  const v = id => document.getElementById(id).value.trim();
+  const date = v('f-date'), time = v('f-time');
+  if (!v('f-title') || !date || !time) { toast('Название, дата и время обязательны'); return; }
+  const starts = Math.floor(new Date(`${date}T${time}`).getTime() / 1000);
+  if (starts < Date.now() / 1000) { toast('Дата уже в прошлом 🙃'); return; }
+  try {
+    const r = await api('/api/events', {method: 'POST', body: JSON.stringify({
+      title: v('f-title'), description: v('f-desc'), starts_at: starts,
+      area: v('f-area'), address: v('f-addr'), capacity: +v('f-cap') || 0,
+      age_limit: v('f-age'), price_text: v('f-price'), pay_url: v('f-pay'),
+      refs_needed: +v('f-refs') || 0, channel: v('f-ch'),
+    })});
+    tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
+    go('event/' + r.id);
+  } catch (err) { toast(err.message); }
+}
+
+/* ---------- МОИ ТУСЫ (организатор) ---------- */
+async function renderMy() {
+  setNav('my');
+  app.innerHTML = '<h1>Мои тусы 🪩</h1><div class="hint">Загружаю...</div>';
+  const events = await api('/api/me/events');
+  if (!events.length) {
+    app.innerHTML = '<h1>Мои тусы 🪩</h1><div class="empty"><div class="big">🪩</div>Ты ещё не создавал тус.<br>Жми «Создать»!</div>';
+    return;
+  }
+  let html = '<h1>Мои тусы 🪩</h1>';
+  for (const e of events) {
+    html += `<div class="card" onclick="go('org/${e.id}')">
+      <div class="info"><div class="title">${esc(e.title)}</div>
+      <div class="meta">${fmtDate(e.starts_at)} · гостей: ${e.taken}${e.capacity ? '/' + e.capacity : ''}</div></div></div>`;
+  }
+  app.innerHTML = html;
+}
+
+async function renderOrg(id) {
+  setNav('my');
+  app.innerHTML = '<div class="hint">Загружаю...</div>';
+  const [e, guests] = await Promise.all([api('/api/events/' + id), api(`/api/events/${id}/guests`)]);
+  let html = `<h1>${esc(e.title)}</h1>
+    <div class="hint">Гостей: ${e.taken}${e.capacity ? ' из ' + e.capacity : ''}</div>
+    <button class="btn" onclick="go('scan/${id}')">Сканер на входе 📷</button>
+    <button class="btn secondary" onclick="shareEvent('${e.share_link}', '${esc(e.title)}')">Поделиться тусой 🔗</button>
+    <h2>Гостевой список</h2>`;
+  if (!guests.length) html += '<div class="hint">Пока никого — поделись тусой!</div>';
+  for (const g of guests) {
+    const label = g.kind === 'paid_pending' ? '⏳ оплата?' : g.status === 'used' ? '✅ вошёл' : '🎟 ' + g.kind;
+    html += `<div class="guest-row">
+      <div>${esc(g.name)} ${g.username ? '<span class="hint">@' + esc(g.username) + '</span>' : ''}
+        <div class="hint">${label}</div></div>
+      ${g.kind === 'paid_pending' ? `<button class="small-btn" onclick="approve('${g.code}', ${id})">Подтвердить</button>` : ''}
+    </div>`;
+  }
+  app.innerHTML = html;
+}
+async function approve(code, eventId) {
+  try { await api('/api/approve', {method: 'POST', body: JSON.stringify({code})}); renderOrg(eventId); }
+  catch (err) { toast(err.message); }
+}
+
+/* ---------- СКАНЕР ---------- */
+function renderScan(id) {
+  setNav('my');
+  app.innerHTML = `<h1>Сканер 📷</h1>
+    <div class="hint" style="margin-bottom:10px;">Наводи камеру на QR-билет гостя.</div>
+    <div id="reader"></div><div id="scan-result"></div>
+    <button class="btn secondary" onclick="go('org/${id}')">Назад к гостям</button>`;
+  scanner = new Html5Qrcode("reader");
+  let busy = false;
+  scanner.start({facingMode: "environment"}, {fps: 10, qrbox: 220},
+    async (text) => {
+      if (busy) return; busy = true;
+      try {
+        const r = await api('/api/scan', {method: 'POST', body: JSON.stringify({code: text})});
+        const el = document.getElementById('scan-result');
+        el.style.display = 'block';
+        el.style.background = r.ok ? 'rgba(46,204,113,.15)' : 'rgba(231,76,60,.15)';
+        el.style.color = r.ok ? 'var(--ok)' : 'var(--bad)';
+        el.textContent = r.msg;
+        tg.HapticFeedback && tg.HapticFeedback.notificationOccurred(r.ok ? 'success' : 'error');
+      } catch (err) { toast(err.message); }
+      setTimeout(() => { busy = false; }, 1500);
+    }, () => {});
+}
+
+/* ---------- РОУТЕР ---------- */
+function route() {
+  stopScanner();
+  const h = (location.hash || '#feed').slice(1);
+  const [page, arg] = h.split('/');
+  try {
+    if (page === 'feed' || page === '') renderFeed();
+    else if (page === 'event' && arg) renderEvent(arg);
+    else if (page === 'tickets') renderTickets();
+    else if (page === 'create') renderCreate();
+    else if (page === 'my') renderMy();
+    else if (page === 'org' && arg) renderOrg(arg);
+    else if (page === 'scan' && arg) renderScan(arg);
+    else renderFeed();
+  } catch (e) { toast(e.message); }
+}
+window.addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>
