@@ -669,8 +669,13 @@ function renderCreate(){
     <div class="field"><div class="field-lab"><span class="mono">ЦЕНА ТЕКСТОМ</span><span class="field-hint">пусто = free</span></div>
       <input class="input" placeholder="от 500 ₽" value="${esc(F.price_text)}" oninput="FORM.price_text=this.value"></div>
 
-    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА НА ОПЛАТУ</span><span class="field-hint">qtickets и т.п., если платно</span></div>
-      <input class="input" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
+    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА QTICKETS</span><span class="field-hint">если платно</span></div>
+      <input class="input" id="f-payurl" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
+      <div class="field" style="margin-top:-8px">
+        <button class="btn btn-ghost" style="width:100%" onclick="previewQtickets()">Подтянуть билеты из qtickets</button>
+        <div id="qt-types"></div>
+        <div class="field-hint" style="margin-top:8px;line-height:1.4">Бот сам покажет твои тарифы (ВИП и т.д.) и поймает оплату — нужен подключённый qtickets в профиле.</div>
+      </div>
 
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">FREE ЗА ДРУЗЕЙ</span><span class="field-hint">0 = выкл</span></div>
@@ -708,11 +713,14 @@ async function publish(){
 let PSEG = 'host';
 async function renderProfile(){
   $screen.innerHTML = '<div class="loading">ЗАГРУЗКА…</div>';
-  let mine=[], ts=[];
-  try { const r = await Promise.all([api('/api/me/events'), api('/api/me/tickets')]); mine=r[0]; ts=r[1]; }
-  catch(e){ $screen.innerHTML=''; toast(e.message,false); return; }
+  let mine=[], ts=[], qt={connected:false};
+  try {
+    const r = await Promise.all([api('/api/me/events'), api('/api/me/tickets'), api('/api/qtickets/status')]);
+    mine=r[0]; ts=r[1]; qt=r[2];
+  } catch(e){ $screen.innerHTML=''; toast(e.message,false); return; }
   if(TAB!=='profile') return;
   window.__TICKETS = ts;
+  window.__QT_CONNECTED = qt.connected;
   const guests = mine.reduce(function(a,p){ return a+(p.taken||0); },0);
   $screen.innerHTML = `
     <div class="profile-head">
@@ -735,8 +743,24 @@ async function renderProfile(){
       <button class="seg-opt${PSEG==='host'?' on':''}" onclick="PSEG='host';renderProfile()">Организую</button>
       <button class="seg-opt${PSEG==='going'?' on':''}" onclick="PSEG='going';renderProfile()">Я иду</button>
     </div>
-    ${PSEG==='host' ? renderMine(mine) : renderGoing(ts)}
+    ${PSEG==='host' ? (qtCard(qt.connected) + renderMine(mine)) : renderGoing(ts)}
     <div style="height:24px"></div>`;
+}
+function qtCard(connected){
+  return `<div class="ref-card" style="margin:14px 16px 0">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div class="ref-title">qtickets ${connected?'<span style="color:#2ecc71">подключён ✓</span>':'<span style="color:var(--text-3)">не подключён</span>'}</div>
+        <div class="ref-sub">${connected
+          ? 'Бот сам тянет тарифы и ловит оплату на твоих платных тусах.'
+          : 'Подключи один раз — и бот будет показывать твои билеты (ВИП и т.д.) и автоматически выдавать QR после оплаты.'}</div>
+      </div>
+    </div>
+    <div style="height:10px"></div>
+    ${connected
+      ? `<button class="btn btn-ghost" style="width:100%" onclick="disconnectQtickets()">Отключить qtickets</button>`
+      : `<button class="btn btn-primary" style="width:100%" onclick="openQtConnect()">Подключить qtickets</button>`}
+  </div>`;
 }
 function renderMine(mine){
   if(!mine.length) return `<div class="empty">
@@ -836,6 +860,67 @@ function openScanner(id){
 function closeScanner(){
   if(scanner){ scanner.stop().catch(function(){}); scanner=null; }
   const s = document.getElementById('scan-sheet'); if(s) s.remove();
+}
+
+/* ───────── qtickets: подключение и превью ───────── */
+function openQtConnect(){
+  const sh = document.createElement('div');
+  sh.className = 'sheet'; sh.id = 'qt-sheet';
+  sh.innerHTML = `
+    <div class="sheet-head"><div class="sheet-title">Подключить qtickets</div>
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
+    <div class="sheet-body">
+      <div class="ref-sub" style="line-height:1.55;margin-bottom:16px">
+        Где взять токен: зайди на <b>qtickets.app</b> → «Настройки» → «Основное» → внизу страницы <b>API-токен</b>. Скопируй и вставь сюда. Делается один раз — дальше все твои платные тусы работают сами.
+      </div>
+      <input class="input" id="qt-token" placeholder="Вставь API-токен" autocomplete="off">
+      <div style="height:14px"></div>
+      <button class="btn btn-primary" style="width:100%" id="qt-save" onclick="saveQtToken()">Подключить</button>
+    </div>`;
+  $overlays.appendChild(sh);
+}
+async function saveQtToken(){
+  const inp = document.getElementById('qt-token');
+  const token = (inp.value||'').trim();
+  if(!token){ toast('Вставь токен',false); return; }
+  const btn = document.getElementById('qt-save');
+  btn.disabled = true; btn.textContent = 'Проверяю…';
+  try{
+    await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:token})});
+    haptic(); const s=document.getElementById('qt-sheet'); if(s) s.remove();
+    toast('qtickets подключён ✓'); renderProfile();
+  }catch(e){ toast(e.message,false); btn.disabled=false; btn.textContent='Подключить'; }
+}
+async function disconnectQtickets(){
+  try{ await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:''})});
+    toast('qtickets отключён'); renderProfile(); }
+  catch(e){ toast(e.message,false); }
+}
+async function previewQtickets(){
+  const url = (document.getElementById('f-payurl')||{}).value || FORM.pay_url;
+  const box = document.getElementById('qt-types');
+  if(!url){ toast('Сначала вставь ссылку qtickets',false); return; }
+  box.innerHTML = '<div class="field-hint" style="margin-top:10px">Загружаю тарифы…</div>';
+  try{
+    const r = await api('/api/qtickets/preview',{method:'POST',body:JSON.stringify({url:url})});
+    if(!r.types || !r.types.length){
+      box.innerHTML = '<div class="field-hint" style="margin-top:10px">Тарифы не нашлись. Проверь ссылку — или билеты ещё не настроены в qtickets.</div>';
+      return;
+    }
+    box.innerHTML = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">' +
+      r.types.map(function(t){
+        return `<div style="display:flex;justify-content:space-between;background:var(--surface-2);border-radius:10px;padding:9px 12px;font-size:13px">
+          <span>${esc(t.name)}</span><span class="mono" style="color:var(--text-1)">${(t.price||0).toLocaleString('ru-RU')} ₽</span></div>`;
+      }).join('') + '</div>' +
+      '<div class="field-hint" style="margin-top:8px;color:#2ecc71">✓ Привязано. Бот поймает оплату автоматически.</div>';
+    haptic();
+  }catch(err){
+    if(err.data && err.data.need==='connect'){
+      box.innerHTML = '<div class="field-hint" style="margin-top:10px">Сначала подключи qtickets в профиле (вкладка «Профиль»).</div>';
+    } else {
+      box.innerHTML = `<div class="field-hint" style="margin-top:10px">${esc(err.message)}</div>`;
+    }
+  }
 }
 
 /* ───────── выбор города ───────── */

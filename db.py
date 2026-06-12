@@ -23,10 +23,11 @@ def init() -> None:
     c.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
-            tg_id      INTEGER PRIMARY KEY,
-            username   TEXT,
-            first_name TEXT,
-            created_at INTEGER NOT NULL
+            tg_id          INTEGER PRIMARY KEY,
+            username       TEXT,
+            first_name     TEXT,
+            qtickets_token TEXT NOT NULL DEFAULT '',  -- API-токен организатора (один раз)
+            created_at     INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS events (
@@ -46,6 +47,7 @@ def init() -> None:
             cover       TEXT NOT NULL DEFAULT 'ember', -- ключ обложки-градиента
             city        TEXT NOT NULL DEFAULT 'Москва',
             genre       TEXT NOT NULL DEFAULT '',  -- вайб: "techno · b2b" и т.п.
+            qt_event_id INTEGER NOT NULL DEFAULT 0, -- id события в qtickets (0 = не привязано)
             status      TEXT NOT NULL DEFAULT 'active', -- active | cancelled | done
             created_at  INTEGER NOT NULL
         );
@@ -56,6 +58,7 @@ def init() -> None:
             user_id    INTEGER NOT NULL REFERENCES users(tg_id),
             kind       TEXT NOT NULL,              -- free | paid_pending | paid
             status     TEXT NOT NULL DEFAULT 'active', -- active | used | revoked
+            qt_order   TEXT NOT NULL DEFAULT '',   -- id оплаченного заказа qtickets (дедуп)
             rem24_sent INTEGER NOT NULL DEFAULT 0,
             rem3_sent  INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
@@ -78,6 +81,9 @@ def init() -> None:
         "ALTER TABLE events ADD COLUMN cover TEXT NOT NULL DEFAULT 'ember'",
         "ALTER TABLE events ADD COLUMN city TEXT NOT NULL DEFAULT 'Москва'",
         "ALTER TABLE events ADD COLUMN genre TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE events ADD COLUMN qt_event_id INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN qtickets_token TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN qt_order TEXT NOT NULL DEFAULT ''",
     ):
         try:
             c.execute(ddl)
@@ -123,8 +129,8 @@ def create_event(org_id: int, data: dict) -> int:
     c = conn()
     cur = c.execute(
         """INSERT INTO events(org_id,title,description,starts_at,area,address,
-           price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,created_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,qt_event_id,created_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             org_id,
             data["title"], data.get("description", ""), int(data["starts_at"]),
@@ -134,11 +140,64 @@ def create_event(org_id: int, data: dict) -> int:
             data.get("channel", "").lstrip("@"), data.get("age_limit", ""),
             str(data.get("cover") or "ember"),
             str(data.get("city") or "Москва"), data.get("genre", ""),
+            int(data.get("qt_event_id") or 0),
             now(),
         ),
     )
     c.commit()
     return cur.lastrowid
+
+
+# ---------- qtickets ----------
+
+def set_qtickets_token(user_id: int, token: str) -> None:
+    c = conn()
+    c.execute("UPDATE users SET qtickets_token=? WHERE tg_id=?", (token.strip(), user_id))
+    c.commit()
+
+
+def events_with_qtickets() -> list[sqlite3.Row]:
+    """Активные будущие события, привязанные к qtickets, с токеном организатора."""
+    return conn().execute(
+        f"""SELECT e.*, u.qtickets_token FROM events e JOIN users u ON u.tg_id = e.org_id
+            WHERE e.status='active' AND e.qt_event_id > 0 AND u.qtickets_token != ''
+              AND e.starts_at > {now() - 6 * 3600}"""
+    ).fetchall()
+
+
+def pending_paid_tickets(event_id: int) -> list[sqlite3.Row]:
+    """Заявки 'я купил' на событии, ждущие подтверждения оплаты."""
+    return conn().execute(
+        "SELECT * FROM tickets WHERE event_id=? AND kind='paid_pending'", (event_id,)
+    ).fetchall()
+
+
+def mark_paid_by_order(code: str, qt_order: str) -> None:
+    c = conn()
+    c.execute("UPDATE tickets SET kind='paid', qt_order=? WHERE code=? AND kind='paid_pending'",
+              (str(qt_order), code))
+    c.commit()
+
+
+def order_already_used(qt_order: str) -> bool:
+    return conn().execute(
+        "SELECT 1 FROM tickets WHERE qt_order=?", (str(qt_order),)
+    ).fetchone() is not None
+
+
+def create_paid_ticket_direct(event_id: int, user_id: int, qt_order: str) -> str | None:
+    """Создать сразу оплаченный билет (когда заявки не было, а оплата пришла)."""
+    if get_user_ticket(event_id, user_id):
+        return None
+    import uuid as _uuid
+    code = _uuid.uuid4().hex
+    c = conn()
+    c.execute(
+        "INSERT INTO tickets(code,event_id,user_id,kind,qt_order,created_at) VALUES(?,?,?,'paid',?,?)",
+        (code, event_id, user_id, str(qt_order), now()),
+    )
+    c.commit()
+    return code
 
 
 def list_events(upcoming_only: bool = True, city: str | None = None) -> list[sqlite3.Row]:

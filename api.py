@@ -1,4 +1,5 @@
 """HTTP API для Mini App + раздача статики (webapp/index.html)."""
+import asyncio
 import hashlib
 import hmac
 import json
@@ -11,6 +12,7 @@ from aiohttp import web
 
 import config
 import db
+import qtickets
 
 log = logging.getLogger("tusa.api")
 WEBAPP_DIR = Path(__file__).parent / "webapp"
@@ -111,8 +113,49 @@ async def h_create_event(request: web.Request):
         return web.json_response({"error": "title и дата обязательны"}, status=400)
     if len(body.get("title", "")) > 80:
         return web.json_response({"error": "слишком длинное название"}, status=400)
+    # привязка к qtickets: достаём id события из ссылки оплаты
+    if body.get("pay_url"):
+        body["qt_event_id"] = qtickets.parse_event_id(body["pay_url"])
     event_id = db.create_event(me, body)
     return web.json_response({"id": event_id})
+
+
+# ---------- qtickets ----------
+
+async def h_qtickets_status(request: web.Request):
+    me = request["user"]["id"]
+    u = db.get_user(me)
+    return web.json_response({"connected": bool(u and u["qtickets_token"])})
+
+
+async def h_qtickets_connect(request: web.Request):
+    me = request["user"]["id"]
+    body = await request.json()
+    token = (body.get("token") or "").strip()
+    if not token:
+        # пустой токен = отключить
+        db.set_qtickets_token(me, "")
+        return web.json_response({"connected": False})
+    ok = await asyncio.get_event_loop().run_in_executor(None, qtickets.check_token, token)
+    if not ok:
+        return web.json_response({"error": "Токен не подошёл. Проверь, что скопировал целиком из «Настройки → Основное» в qtickets."}, status=400)
+    db.set_qtickets_token(me, token)
+    return web.json_response({"connected": True})
+
+
+async def h_qtickets_preview(request: web.Request):
+    """Показать типы билетов по ссылке qtickets (для формы создания)."""
+    me = request["user"]["id"]
+    u = db.get_user(me)
+    if not u or not u["qtickets_token"]:
+        return web.json_response({"error": "Сначала подключи qtickets в профиле", "need": "connect"}, status=400)
+    body = await request.json()
+    eid = qtickets.parse_event_id(body.get("url", ""))
+    if not eid:
+        return web.json_response({"error": "Не похоже на ссылку qtickets на событие"}, status=400)
+    types = await asyncio.get_event_loop().run_in_executor(
+        None, qtickets.get_ticket_types, u["qtickets_token"], eid)
+    return web.json_response({"qt_event_id": eid, "types": types})
 
 
 async def h_claim_free(request: web.Request):
@@ -251,6 +294,47 @@ async def h_index(request: web.Request):
     return web.FileResponse(WEBAPP_DIR / "index.html")
 
 
+# ---------- авто-отслеживание оплат qtickets ----------
+
+async def poll_qtickets_payments(bot) -> None:
+    """Опрашивает qtickets по привязанным событиям и автоматически выдаёт билеты
+    тем, кто оплатил (матчинг по telegram_user / utm_content)."""
+    loop = asyncio.get_event_loop()
+    for e in db.events_with_qtickets():
+        token, qt_eid, event_id = e["qtickets_token"], e["qt_event_id"], e["id"]
+        try:
+            orders = await loop.run_in_executor(None, qtickets.list_paid_orders, token, qt_eid)
+        except Exception as ex:
+            log.warning("poll qtickets event=%s failed: %s", event_id, ex)
+            continue
+        for order in orders:
+            oid = str(order.get("id") or order.get("uniqid") or "")
+            if not oid or db.order_already_used(oid):
+                continue
+            tg_id = qtickets.extract_tg_id(order)
+            if not tg_id:
+                continue  # не смогли сопоставить — оставим на ручное подтверждение
+            db.upsert_user(tg_id, None, None)
+            existing = db.get_user_ticket(event_id, tg_id)
+            if existing and existing["kind"] == "paid_pending":
+                db.mark_paid_by_order(existing["code"], oid)
+                code = existing["code"]
+            elif existing:
+                continue  # уже есть билет — пропускаем
+            else:
+                code = db.create_paid_ticket_direct(event_id, tg_id, oid)
+                if not code:
+                    continue
+            try:
+                await bot.send_message(
+                    tg_id,
+                    f"Оплата получена — билет на «{e['title']}» у тебя! 🎟\nСмотри вкладку «Билеты».",
+                )
+            except Exception:
+                pass
+            log.info("qtickets auto-issued ticket event=%s tg=%s order=%s", event_id, tg_id, oid)
+
+
 def make_web_app(bot) -> web.Application:
     app = web.Application(middlewares=[auth_middleware])
     app["bot"] = bot
@@ -268,5 +352,8 @@ def make_web_app(bot) -> web.Application:
         web.get("/api/me/events", h_my_events),
         web.post("/api/approve", h_approve),
         web.post("/api/scan", h_scan),
+        web.get("/api/qtickets/status", h_qtickets_status),
+        web.post("/api/qtickets/connect", h_qtickets_connect),
+        web.post("/api/qtickets/preview", h_qtickets_preview),
     ])
     return app

@@ -180,9 +180,11 @@ async def main() -> None:
     await site.start()
     log.info("Mini App server on port %s", config.PORT)
 
-    # планировщик напоминаний
+    # планировщик: напоминания + опрос оплат qtickets
+    from api import poll_qtickets_payments
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", minutes=5, args=[bot])
+    scheduler.add_job(poll_qtickets_payments, "interval", minutes=2, args=[bot])
     scheduler.start()
 
     log.info("Bot started")
