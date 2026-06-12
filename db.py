@@ -294,7 +294,8 @@ def create_ticket(event_id: int, user_id: int, kind: str) -> str:
 
 def user_tickets(user_id: int) -> list[sqlite3.Row]:
     return conn().execute(
-        """SELECT t.*, e.title, e.starts_at, e.area, e.address, e.age_limit, e.cover
+        """SELECT t.*, e.title, e.starts_at, e.area, e.address, e.age_limit, e.cover,
+                  e.qt_event_id, e.pay_url
            FROM tickets t JOIN events e ON e.id = t.event_id
            WHERE t.user_id=? AND t.status!='revoked' AND e.status='active'
            ORDER BY e.starts_at ASC""",

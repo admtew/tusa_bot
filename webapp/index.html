@@ -677,17 +677,29 @@ function showQR(i){
   wrap.className = 'modal-wrap';
   wrap.onclick = function(){ wrap.remove(); };
   const pending = t.kind==='paid_pending';
+  // билет через qtickets: настоящий билет выдаёт qtickets (на почту/в их боте), наш QR не нужен
+  const isQt = t.qtickets && t.kind!=='free';
+  let body;
+  if(pending){
+    body = `<div class="empty-sub" style="margin:10px 0">Ждём подтверждения оплаты. Как только пройдёт — здесь появится билет.</div>`;
+  } else if(isQt){
+    body = `<div class="qr-box" style="background:var(--surface-2);width:190px;height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:18px">
+        ${I.check(34,'#2ecc71')}
+        <div style="font-size:13px;color:var(--text-1);line-height:1.45">Оплата прошла.<br>Билет придёт <b>от qtickets</b> на почту — его и покажешь на входе.</div>
+      </div>`;
+  } else {
+    body = `<div class="qr-box"><div id="qr-target"></div></div>`;
+  }
   wrap.innerHTML = `<div class="qr-sheet" onclick="event.stopPropagation()">
     <button class="qr-close" onclick="this.closest('.modal-wrap').remove()">${I.close(20,'var(--text-2)')}</button>
     <div class="qr-event">${esc(t.title)}</div>
     <div class="qr-when">${f.dow} ${f.date} · ${f.time}</div>
-    ${pending ? `<div class="empty-sub" style="margin:10px 0">Оплата ещё не подтверждена организатором. QR появится после подтверждения.</div>`
-              : `<div class="qr-box"><div id="qr-target"></div></div>`}
+    ${body}
     <div class="qr-addr">${I.pin(14,'var(--accent)')}<span>${t.address?esc(t.address)+' · '+esc(t.area):esc(t.area)+' · точный адрес придёт перед началом'}</span></div>
-    ${pending?'':'<div class="qr-note">покажи этот код на входе</div>'}
+    ${pending?'':(isQt?'<div class="qr-note">вход по билету qtickets</div>':'<div class="qr-note">покажи этот код на входе</div>')}
   </div>`;
   document.body.appendChild(wrap);
-  if(!pending) new QRCode(document.getElementById('qr-target'), {text:t.code, width:190, height:190});
+  if(!pending && !isQt) new QRCode(document.getElementById('qr-target'), {text:t.code, width:190, height:190});
 }
 
 /* ───────── создание ───────── */

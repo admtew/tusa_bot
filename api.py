@@ -342,6 +342,8 @@ async def h_my_tickets(request: web.Request):
             "title": t["title"], "starts_at": t["starts_at"], "area": t["area"],
             "age_limit": t["age_limit"], "cover": t["cover"],
             "address": t["address"] if reveal else None,
+            # билет через qtickets: настоящий билет выдаёт qtickets, наш QR не нужен
+            "qtickets": bool(t["qt_event_id"]),
         })
     return web.json_response(out)
 
