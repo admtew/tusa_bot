@@ -25,5 +25,11 @@ ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "3"))
 # Контакт поддержки (показывается в /support). Поменяй на свой.
 SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@your_support")
 
+# Админы-модераторы: tg id через запятую (узнать свой — @userinfobot).
+# Если пусто — модерации нет, события публикуются сразу.
+ADMIN_IDS: list[int] = [
+    int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x.strip().isdigit()
+]
+
 if not BOT_TOKEN:
     raise SystemExit("Заполни BOT_TOKEN в .env (токен из @BotFather)")

@@ -103,7 +103,10 @@ input,textarea,select{font-family:inherit;}
 .tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 12px;flex:1;}
 .tab-lab{font-size:10.5px;color:var(--text-3);font-weight:500;text-transform:lowercase;}
 .tab.on .tab-lab{color:var(--text-0);}
-.tab-ic{display:flex;align-items:center;justify-content:center;height:24px;}
+.tab-ic{display:flex;align-items:center;justify-content:center;height:24px;transition:transform .15s cubic-bezier(.2,.8,.2,1);}
+.tab:active .tab-ic{transform:scale(.82);}
+.tab.tapped .tab-ic{animation:tabPop .34s cubic-bezier(.34,1.56,.64,1);}
+@keyframes tabPop{0%{transform:scale(.8);}55%{transform:scale(1.18);}100%{transform:scale(1);}}
 .tab.mid{flex:0;}
 .tab.mid .tab-ic{width:50px;height:50px;border-radius:16px;background:var(--accent);box-shadow:0 10px 26px -8px rgba(255,61,90,.75);margin-top:-22px;border:3px solid var(--bg);}
 
@@ -165,6 +168,11 @@ input,textarea,select{font-family:inherit;}
 input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:50px;}
 .cover-preview{position:relative;width:100%;aspect-ratio:16/10;border-radius:15px;overflow:hidden;margin-bottom:11px;border:1px solid var(--line);}
 .cover-preview-mark{font-family:var(--display);font-weight:900;font-size:40px;color:rgba(255,255,255,0.92);letter-spacing:-1.5px;position:absolute;left:16px;bottom:12px;}
+.cover-upload{position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:7px;background:rgba(0,0,0,0.5);backdrop-filter:blur(10px);color:#fff;font-size:12.5px;font-weight:500;padding:9px 13px;border-radius:11px;border:1px solid rgba(255,255,255,0.2);cursor:pointer;}
+.cover-upload:active{transform:scale(.96);}
+.status-badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.5px;padding:2px 7px;border-radius:6px;text-transform:uppercase;vertical-align:middle;margin-left:6px;}
+.status-badge.wait{background:rgba(243,156,18,.16);color:#f39c12;}
+.status-badge.bad{background:rgba(231,76,60,.15);color:#e74c3c;}
 .cover-swatches{display:flex;gap:8px;}
 .swatch{width:40px;height:40px;border-radius:11px;flex-shrink:0;border:2px solid transparent;opacity:0.75;}
 .swatch.on{border-color:var(--text-0);opacity:1;transform:scale(1.04);}
@@ -351,7 +359,13 @@ const I = {
   arrow:(s=18,c='#fff')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`,
   qr:(s=14,c='var(--text-2)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h2.5v2.5M20.5 14.5v6M14.5 20.5h2.5"/></svg>`,
   camera:(s=18,c='#fff')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8.5 7 10 4.5h4L15.5 7"/><circle cx="12" cy="13" r="3.4"/></svg>`,
+  image:(s=18,c='#fff')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.4"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 17l4.5-4 3.5 3 3-2.5 4 3.5"/></svg>`,
+  trash:(s=16,c='var(--text-2)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>`,
 };
+/* стиль обложки: своя картинка или градиент-класс */
+function coverStyle(e){
+  return e && e.has_cover ? `style="background-image:url(/cover/${e.id});background-size:cover;background-position:center"` : '';
+}
 function avatar(name, size, accent){
   const letter = (name||'?').replace(/[^a-zа-яё0-9]/i,'').charAt(0).toUpperCase() || '?';
   return `<div class="avatar${accent?' accent':''}" style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.4)}px">${esc(letter)}</div>`;
@@ -405,7 +419,14 @@ function renderTabbar(){
       ${t.mid?'':`<span class="tab-lab">${t.label}</span>`}
     </button>`).join('');
 }
-function go(tab){ TAB = tab; renderTabbar(); $screen.scrollTop = 0; render(); }
+function go(tab){ TAB = tab; renderTabbar(); animateTab(tab); $screen.scrollTop = 0; render(); }
+function animateTab(tab){
+  const idx = TABS.findIndex(function(t){ return t.id===tab; });
+  const el = document.querySelectorAll('#tabbar .tab')[idx];
+  if(!el) return;
+  el.classList.remove('tapped'); void el.offsetWidth; el.classList.add('tapped');
+  try{ tg.HapticFeedback.impactOccurred('light'); }catch(e){}
+}
 function render(){
   if(TAB==='feed') renderFeed();
   else if(TAB==='tickets') renderTickets();
@@ -472,8 +493,8 @@ function resetFilters(){ FILTER = {date:null,type:'все'}; renderFeed(); }
 function cardEditorial(e){
   const f = fmt(e.starts_at);
   return `<button class="pcard" onclick="openDetail(${e.id})">
-    <div class="pcard-cover ${covCls(e.cover)}">
-      <div class="cover-mark">${firstWord(e.title)}</div>
+    <div class="pcard-cover ${covCls(e.cover)}" ${coverStyle(e)}>
+      <div class="cover-mark">${e.has_cover?'':firstWord(e.title)}</div>
       <div class="cover-top">
         <span class="pill-live${e.sold_out?' solid':''}">${e.sold_out?'SOLD OUT':'ДРОП'}</span>
         <span class="pill-price">${priceLabel(e)}</span>
@@ -535,7 +556,7 @@ async function openDetail(id){
        <div class="field-hint" style="text-align:center;margin-top:8px">организатор подтвердит, и QR появится в «Билетах»</div></div>` : '<div style="height:14px"></div>';
 
   ov.innerHTML = `<div class="detail">
-    <div class="detail-hero ${covCls(e.cover)}">
+    <div class="detail-hero ${covCls(e.cover)}" ${coverStyle(e)}>
       <div class="detail-hero-scrim"></div>
       <div class="detail-topbar">
         <button class="glass-btn" onclick="closeDetail()">${I.back()}</button>
@@ -653,17 +674,22 @@ function showQR(i){
 }
 
 /* ───────── создание ───────── */
-let FORM = { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0, age_limit:'18+', price_text:'', pay_url:'', refs_needed:0, channel:'', genre:'', cover:'violet' };
+let FORM = { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0, age_limit:'18+', price_text:'', pay_url:'', refs_needed:0, channel:'', genre:'', cover:'violet', cover_data:'' };
 function renderCreate(){
   const F = FORM;
+  const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
   $screen.innerHTML = `
   <div class="create">
     <div class="screen-head tight"><h1 class="h-title">Создать</h1>
       <p class="h-sub">Оформи party как дроп — пару минут и готово</p></div>
 
-    <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span></div>
-      <div class="cover-preview ${covCls(F.cover)}" id="cov-prev"><div class="cover-preview-mark" id="cov-mark">${firstWord(F.title)||'NAME'}</div></div>
-      <div class="cover-swatches">${COVERS.map(k=>`<button class="swatch ${covCls(k)}${F.cover===k?' on':''}" onclick="setCover('${k}')"></button>`).join('')}</div>
+    <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или градиент</span></div>
+      <div class="cover-preview ${F.cover_data?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
+        <div class="cover-preview-mark" id="cov-mark">${firstWord(F.title)||'NAME'}</div>
+        <label class="cover-upload">${I.image(16,'#fff')} Загрузить фото<input type="file" accept="image/*" style="display:none" onchange="pickCover(this)"></label>
+      </div>
+      <div class="cover-swatches">${COVERS.map(k=>`<button class="swatch ${covCls(k)}${(!F.cover_data&&F.cover===k)?' on':''}" onclick="setCover('${k}')"></button>`).join('')}</div>
+      ${F.cover_data?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';renderCreate()">Убрать фото, вернуть градиент</button>`:''}
     </div>
 
     <div class="field"><div class="field-lab"><span class="mono">НАЗВАНИЕ<span class="req">*</span></span></div>
@@ -713,16 +739,43 @@ function renderCreate(){
         <input class="input" placeholder="mychannel" value="${esc(F.channel)}" oninput="FORM.channel=this.value"></div>
     </div>
 
-    <div class="create-cta"><button class="btn btn-primary cta-go" onclick="publish()">Опубликовать party ${I.arrow()}</button></div>
+    <div class="create-cta"><button class="btn btn-primary cta-go" onclick="confirmPublish()">Опубликовать party ${I.arrow()}</button></div>
   </div>`;
 }
-function setCover(k){ FORM.cover=k; renderCreate(); }
+function setCover(k){ FORM.cover=k; FORM.cover_data=''; renderCreate(); }
 function stepCap(d){ FORM.capacity=Math.max(0,(FORM.capacity||0)+d); document.getElementById('f-cap').value=FORM.capacity; }
 function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); document.getElementById('f-refs').value=FORM.refs_needed; }
-async function publish(){
+/* выбор и сжатие своей обложки */
+function pickCover(input){
+  const file = input.files && input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const img = new Image();
+    img.onload = function(){
+      const max = 900;
+      let w = img.width, h = img.height;
+      if(w>h && w>max){ h = Math.round(h*max/w); w = max; }
+      else if(h>=w && h>max){ w = Math.round(w*max/h); h = max; }
+      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      FORM.cover_data = cv.toDataURL('image/jpeg', 0.82);
+      haptic(); renderCreate();
+    };
+    img.onerror = function(){ toast('Не получилось открыть фото',false); };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function confirmPublish(){
   const F = FORM;
   if(!F.title.trim()){ toast('Дай party название',false); return; }
   if(!F.date || !F.time){ toast('Укажи дату и время',false); return; }
+  if(tg.showConfirm){
+    tg.showConfirm('Опубликовать party? Она появится в афише после модерации.', function(ok){ if(ok) publish(); });
+  } else if(confirm('Опубликовать party?')){ publish(); }
+}
+async function publish(){
+  const F = FORM;
   const starts = Math.floor(new Date(F.date+'T'+F.time).getTime()/1000);
   if(!starts || starts < Date.now()/1000){ toast('Дата уже в прошлом 🙃',false); return; }
   try{
@@ -730,11 +783,13 @@ async function publish(){
       title:F.title.trim(), description:F.description, starts_at:starts,
       area:F.area, address:F.address, capacity:F.capacity, age_limit:F.age_limit,
       price_text:F.price_text, pay_url:F.pay_url, refs_needed:F.refs_needed,
-      channel:F.channel, genre:F.genre, cover:F.cover, city:CITY||'Москва',
+      channel:F.channel, genre:F.genre, cover:F.cover, cover_data:F.cover_data, city:CITY||'Москва',
     })});
-    haptic(); toast('Party опубликована в афише');
-    FORM = { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0, age_limit:'18+', price_text:'', pay_url:'', refs_needed:0, channel:'', genre:'', cover:'violet' };
-    go('feed'); setTimeout(function(){ openDetail(r.id); }, 350);
+    haptic();
+    toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
+    FORM = { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0, age_limit:'18+', price_text:'', pay_url:'', refs_needed:0, channel:'', genre:'', cover:'violet', cover_data:'' };
+    if(r.status==='pending'){ PSEG='host'; go('profile'); }
+    else { go('feed'); setTimeout(function(){ openDetail(r.id); }, 350); }
   }catch(err){ toast(err.message,false); }
 }
 
@@ -797,25 +852,67 @@ function renderMine(mine){
     <div class="empty-title">пока нет своих party</div>
     <div class="empty-sub">Создай первую — собери друзей или открой вечеринку для всех.</div>
     <button class="btn btn-primary" onclick="go('create')">Создать party</button></div>`;
-  return `<div class="my-list">${mine.map(function(p){
+  const badge = s => s==='pending' ? '<span class="status-badge wait">на модерации</span>'
+    : s==='rejected' ? '<span class="status-badge bad">отклонено</span>'
+    : s==='cancelled' ? '<span class="status-badge bad">удалено</span>' : '';
+  return `<div class="my-list">${mine.filter(p=>p.status!=='cancelled').map(function(p){
     const f = fmt(p.starts_at);
     const pct = p.capacity?Math.min(100,Math.round(p.taken/p.capacity*100)):0;
+    const live = p.status==='active';
     return `<div class="mycard">
-      <div class="mycard-cover ${covCls(p.cover)}"><div class="mycard-cover-mark">${firstWord(p.title)}</div></div>
+      <div class="mycard-cover ${covCls(p.cover)}" ${coverStyle(p)}><div class="mycard-cover-mark">${p.has_cover?'':firstWord(p.title)}</div></div>
       <div class="mycard-body">
-        <div class="mycard-date">${f.dow} ${f.date} · ${f.time}</div>
+        <div class="mycard-date">${f.dow} ${f.date} · ${f.time} ${badge(p.status)}</div>
         <div class="mycard-title">${esc(p.title)}</div>
         <div class="mycard-stat"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
           <span class="mycard-num">${p.taken}${p.capacity?'/'+p.capacity:''}</span></div>
         <div class="mycard-actions">
           <button class="btn btn-ghost sm" onclick="openGuests(${p.id})">Гости</button>
           <button class="btn btn-ghost sm" onclick="openScanner(${p.id})">Сканер</button>
-          <button class="btn btn-ghost sm" onclick="shareEventById(${p.id},'${esc(p.title)}')">${I.share(15,'var(--text-2)')}</button>
+          ${live?`<button class="btn btn-ghost sm" onclick="shareEventById(${p.id},'${esc(p.title)}')">${I.share(15,'var(--text-2)')}</button>`:''}
+          <button class="btn btn-ghost sm" onclick="reschedule(${p.id})">Перенести</button>
+          <button class="btn btn-ghost sm" onclick="deleteEvent(${p.id},'${esc(p.title)}')">${I.trash(15,'var(--text-2)')}</button>
         </div>
       </div></div>`;
   }).join('')}
   <button class="btn btn-ghost" onclick="go('create')">${I.plus(16,'var(--text-2)')} Создать ещё party</button>
   </div>`;
+}
+async function deleteEvent(id, title){
+  const go2 = function(){ api('/api/events/'+id+'/delete',{method:'POST',body:'{}'})
+    .then(function(){ haptic(); toast('Удалено'); renderProfile(); })
+    .catch(function(e){ toast(e.message,false); }); };
+  if(tg.showConfirm) tg.showConfirm('Удалить «'+title+'»? Отменить нельзя.', function(ok){ if(ok) go2(); });
+  else if(confirm('Удалить?')) go2();
+}
+function reschedule(id){
+  const sh = document.createElement('div');
+  sh.className = 'sheet'; sh.id = 'resch-sheet';
+  sh.innerHTML = `
+    <div class="sheet-head"><div class="sheet-title">Перенести party</div>
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
+    <div class="sheet-body">
+      <div class="ref-sub" style="margin-bottom:14px">Новая дата и время. После переноса party снова пройдёт модерацию.</div>
+      <div class="field-grid" style="padding:0">
+        <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ДАТА</span></div>
+          <input class="input" type="date" id="resch-date"></div>
+        <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ВРЕМЯ</span></div>
+          <input class="input" type="time" id="resch-time" value="18:00"></div>
+      </div>
+      <div style="height:14px"></div>
+      <button class="btn btn-primary" style="width:100%" onclick="doReschedule(${id})">Перенести</button>
+    </div>`;
+  $overlays.appendChild(sh);
+}
+async function doReschedule(id){
+  const d = document.getElementById('resch-date').value, t = document.getElementById('resch-time').value;
+  if(!d || !t){ toast('Укажи дату и время',false); return; }
+  const starts = Math.floor(new Date(d+'T'+t).getTime()/1000);
+  if(!starts || starts < Date.now()/1000){ toast('Дата в прошлом 🙃',false); return; }
+  try{ const r = await api('/api/events/'+id+'/reschedule',{method:'POST',body:JSON.stringify({starts_at:starts})});
+    haptic(); const s=document.getElementById('resch-sheet'); if(s) s.remove();
+    toast(r.status==='pending'?'Перенесено, ждёт модерации':'Дата изменена'); renderProfile();
+  }catch(e){ toast(e.message,false); }
 }
 function renderGoing(ts){
   if(!ts.length) return `<div class="empty">
@@ -969,12 +1066,9 @@ async function openCityPicker(){
       </div>
       <div class="city-list">
         ${CITIES.map(function(c){
-          const n = counts[c.name]||0;
           const on = CITY===c.name;
           return `<button class="city-row${on?' on':''}" onclick="pickCity('${c.name}')">
-            <div class="city-thumb ${covCls(c.cover)}"></div>
-            <div class="city-row-mid"><div class="city-name">${c.name}</div>
-              <span class="city-tag">${n?n+' party':'скоро'} · ${c.tag}</span></div>
+            <div class="city-row-mid"><div class="city-name">${c.name}</div></div>
             ${on?`<span class="city-check">${I.check(15,'#fff')}</span>`:I.arrow(18,'var(--text-3)')}
           </button>`;
         }).join('')}

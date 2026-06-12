@@ -84,6 +84,7 @@ def init() -> None:
         "ALTER TABLE events ADD COLUMN qt_event_id INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN qtickets_token TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE tickets ADD COLUMN qt_order TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE events ADD COLUMN cover_img BLOB",
     ):
         try:
             c.execute(ddl)
@@ -125,12 +126,14 @@ EVENT_FIELDS = (
 )
 
 
-def create_event(org_id: int, data: dict) -> int:
+def create_event(org_id: int, data: dict, status: str = "active",
+                  cover_img: bytes | None = None) -> int:
     c = conn()
     cur = c.execute(
         """INSERT INTO events(org_id,title,description,starts_at,area,address,
-           price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,qt_event_id,created_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,qt_event_id,
+           cover_img,status,created_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             org_id,
             data["title"], data.get("description", ""), int(data["starts_at"]),
@@ -141,11 +144,41 @@ def create_event(org_id: int, data: dict) -> int:
             str(data.get("cover") or "ember"),
             str(data.get("city") or "Москва"), data.get("genre", ""),
             int(data.get("qt_event_id") or 0),
+            cover_img, status,
             now(),
         ),
     )
     c.commit()
     return cur.lastrowid
+
+
+def set_event_status(event_id: int, status: str) -> None:
+    c = conn()
+    c.execute("UPDATE events SET status=? WHERE id=?", (status, event_id))
+    c.commit()
+
+
+def delete_event(event_id: int, org_id: int) -> bool:
+    """Мягкое удаление: только владелец."""
+    c = conn()
+    cur = c.execute("UPDATE events SET status='cancelled' WHERE id=? AND org_id=?",
+                    (event_id, org_id))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def reschedule_event(event_id: int, org_id: int, new_starts: int, new_status: str) -> bool:
+    """Перенос даты владельцем. new_status='pending' если включена модерация."""
+    c = conn()
+    cur = c.execute("UPDATE events SET starts_at=?, status=? WHERE id=? AND org_id=?",
+                    (int(new_starts), new_status, event_id, org_id))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def get_cover(event_id: int) -> bytes | None:
+    row = conn().execute("SELECT cover_img FROM events WHERE id=?", (event_id,)).fetchone()
+    return row[0] if row and row[0] else None
 
 
 # ---------- qtickets ----------

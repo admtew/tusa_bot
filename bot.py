@@ -146,6 +146,48 @@ async def cmd_app(message: Message) -> None:
     await message.answer("Все party — внутри 👇", reply_markup=webapp_kb())
 
 
+# ---------- модерация (кнопки админа) ----------
+
+@router.callback_query(lambda c: c.data and c.data.startswith(("mod_ok_", "mod_no_")))
+async def on_moderation(call, bot: Bot) -> None:
+    if call.from_user.id not in config.ADMIN_IDS:
+        await call.answer("Только для модераторов", show_alert=True)
+        return
+    approve = call.data.startswith("mod_ok_")
+    try:
+        event_id = int(call.data.split("_")[-1])
+    except ValueError:
+        await call.answer("Битый id")
+        return
+    event = db.get_event(event_id)
+    if not event:
+        await call.answer("Событие не найдено")
+        return
+    db.set_event_status(event_id, "active" if approve else "rejected")
+    # уведомляем организатора
+    try:
+        if approve:
+            await bot.send_message(
+                event["org_id"],
+                f"✅ Твоя party «{event['title']}» одобрена и опубликована в афише!",
+                reply_markup=webapp_kb(f"event/{event_id}"),
+            )
+        else:
+            await bot.send_message(
+                event["org_id"],
+                f"🚫 Party «{event['title']}» не прошла модерацию.\n"
+                f"Вопросы — {config.SUPPORT_CONTACT}",
+            )
+    except Exception:
+        pass
+    mark = "✅ Одобрено" if approve else "🚫 Отклонено"
+    try:
+        await call.message.edit_text(f"{call.message.text}\n\n<b>{mark}</b>")
+    except Exception:
+        pass
+    await call.answer(mark)
+
+
 # ---------- напоминания ----------
 
 async def send_reminders(bot: Bot) -> None:

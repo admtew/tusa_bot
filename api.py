@@ -79,6 +79,8 @@ def event_json(e, me_id: int | None = None) -> dict:
         "taken": taken,
         "sold_out": bool(e["capacity"] and taken >= e["capacity"]),
         "is_mine": me_id == e["org_id"],
+        "status": e["status"],
+        "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
     }
     org = db.get_user(e["org_id"])
     d["host"] = (org["username"] or org["first_name"] or "host") if org else "host"
@@ -122,6 +124,39 @@ async def h_event(request: web.Request):
     return web.json_response(data)
 
 
+def _decode_cover(data_url: str) -> bytes | None:
+    """base64 data-URL картинки -> bytes (ограничение размера 1.5 МБ)."""
+    if not data_url or "," not in data_url:
+        return None
+    try:
+        import base64
+        raw = base64.b64decode(data_url.split(",", 1)[1])
+        return raw if 0 < len(raw) <= 1_500_000 else None
+    except Exception:
+        return None
+
+
+def _moderation_on() -> bool:
+    return bool(config.ADMIN_IDS)
+
+
+async def _notify_admins_new(bot, event_id: int, title: str, org: str):
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Одобрить", callback_data=f"mod_ok_{event_id}"),
+        InlineKeyboardButton(text="🚫 Отклонить", callback_data=f"mod_no_{event_id}"),
+    ]])
+    for admin in config.ADMIN_IDS:
+        try:
+            await bot.send_message(
+                admin,
+                f"🆕 <b>На модерацию</b>\n«{title}»\nОрганизатор: {org}\nID: {event_id}",
+                reply_markup=kb,
+            )
+        except Exception:
+            pass
+
+
 async def h_create_event(request: web.Request):
     me = request["user"]["id"]
     body = await request.json()
@@ -133,8 +168,49 @@ async def h_create_event(request: web.Request):
     # привязка к qtickets: достаём id события из ссылки оплаты
     if body.get("pay_url"):
         body["qt_event_id"] = qtickets.parse_event_id(body["pay_url"])
-    event_id = db.create_event(me, body)
-    return web.json_response({"id": event_id})
+    cover_img = _decode_cover(body.get("cover_data", ""))
+    status = "pending" if _moderation_on() else "active"
+    event_id = db.create_event(me, body, status=status, cover_img=cover_img)
+    if status == "pending":
+        org = request["user"].get("username") or request["user"].get("first_name") or str(me)
+        await _notify_admins_new(request.app["bot"], event_id, body["title"], org)
+    return web.json_response({"id": event_id, "status": status})
+
+
+async def h_delete_event(request: web.Request):
+    me = request["user"]["id"]
+    eid = int(request.match_info["id"])
+    if db.delete_event(eid, me):
+        return web.json_response({"ok": True})
+    return web.json_response({"error": "Не получилось — это не твоё событие"}, status=403)
+
+
+async def h_reschedule_event(request: web.Request):
+    me = request["user"]["id"]
+    eid = int(request.match_info["id"])
+    body = await request.json()
+    new_starts = int(body.get("starts_at") or 0)
+    if new_starts <= time.time():
+        return web.json_response({"error": "Дата должна быть в будущем"}, status=400)
+    e = db.get_event(eid)
+    if not e or e["org_id"] != me:
+        return web.json_response({"error": "Это не твоё событие"}, status=403)
+    status = "pending" if _moderation_on() else "active"
+    db.reschedule_event(eid, me, new_starts, status)
+    if status == "pending":
+        org = request["user"].get("username") or request["user"].get("first_name") or str(me)
+        await _notify_admins_new(request.app["bot"], eid, e["title"] + " (перенос)", org)
+    return web.json_response({"ok": True, "status": status})
+
+
+async def h_cover(request: web.Request):
+    """Картинка-обложка события (публично, без авторизации — это просто постер)."""
+    eid = int(request.match_info["id"])
+    img = db.get_cover(eid)
+    if not img:
+        return web.Response(status=404)
+    return web.Response(body=img, content_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ---------- qtickets ----------
@@ -357,7 +433,10 @@ def make_web_app(bot) -> web.Application:
     app["bot"] = bot
     app.add_routes([
         web.get("/", h_index),
+        web.get("/cover/{id}", h_cover),
         web.get("/api/events", h_events),
+        web.post("/api/events/{id}/delete", h_delete_event),
+        web.post("/api/events/{id}/reschedule", h_reschedule_event),
         web.get("/api/cities", h_cities),
         web.get("/api/meta", h_meta),
         web.post("/api/events", h_create_event),
