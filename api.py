@@ -50,6 +50,23 @@ async def auth_middleware(request: web.Request, handler):
     return await handler(request)
 
 
+@web.middleware
+async def security_middleware(request: web.Request, handler):
+    """Заголовки безопасности + запрет кеширования приватных данных."""
+    try:
+        resp = await handler(request)
+    except web.HTTPException:
+        raise
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["X-Frame-Options"] = "ALLOW-FROM https://web.telegram.org"
+    if request.path.startswith("/api/"):
+        # приватные ответы (билеты, гости, токены) не кешируем нигде
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 def event_json(e, me_id: int | None = None) -> dict:
     taken = db.tickets_count(e["id"])
     d = {
@@ -336,7 +353,7 @@ async def poll_qtickets_payments(bot) -> None:
 
 
 def make_web_app(bot) -> web.Application:
-    app = web.Application(middlewares=[auth_middleware])
+    app = web.Application(middlewares=[security_middleware, auth_middleware])
     app["bot"] = bot
     app.add_routes([
         web.get("/", h_index),
