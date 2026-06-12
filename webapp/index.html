@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>tusa</title>
+<title>AFTERS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -294,7 +294,7 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 <body>
 <header class="tg-head">
   <div class="tg-head-l">
-    <div class="tg-logo">tusa</div>
+    <div class="tg-logo">AFTERS</div>
     <button class="city-pill" onclick="openCityPicker()">
       <span id="pin-ic"></span><span class="city-pill-name" id="city-name">город</span>
     </button>
@@ -549,7 +549,7 @@ async function openDetail(id){
   else if(hasTicket && e.my_ticket.status==='used') cta = `<button class="btn btn-have cta-go" disabled>Билет использован</button>`;
   else if(hasTicket) cta = `<button class="btn btn-have cta-go" onclick="closeDetail();go('tickets')">${I.check(18)} Билет получен · показать</button>`;
   else if(e.sold_out) cta = `<button class="btn btn-soldout cta-go" disabled>Мест нет</button>`;
-  else if(e.pay_url) cta = `<a class="btn btn-primary cta-go" href="${esc(e.pay_url)}" target="_blank">Купить билет ${I.arrow()}</a>`;
+  else if(e.pay_url) cta = `<a class="btn btn-primary cta-go" href="${esc(buyUrl(e))}" target="_blank" onclick="buyClick(${e.id})">Купить билет ${I.arrow()}</a>`;
   else if(e.refs_needed>0 && e.my_refs<e.refs_needed) cta = `<button class="btn btn-primary cta-go" onclick="shareRef('${e.ref_link}','${esc(e.title)}')">Позвать друзей ${I.arrow()}</button>`;
   else cta = `<button class="btn btn-primary cta-go" onclick="claimFree(${e.id})">Получить билет ${I.arrow()}</button>`;
 
@@ -621,6 +621,17 @@ async function claimPaid(id){
   try{ await api('/api/events/'+id+'/claim_paid',{method:'POST',body:'{}'});
     haptic(); toast('Заявка отправлена — организатор подтвердит оплату'); closeDetail(); }
   catch(err){ toast(err.message,false); }
+}
+/* ссылка оплаты с меткой tg_id, чтобы бот сам сопоставил оплату */
+function buyUrl(e){
+  const url = e.pay_url || '';
+  if(!ME.id) return url;
+  const sep = url.indexOf('?')>=0 ? '&' : '?';
+  return url + sep + 'utm_medium=tusa&utm_content=' + ME.id;
+}
+/* при переходе на оплату — тихо создаём заявку (бот свяжет её с оплатой) */
+function buyClick(id){
+  try{ api('/api/events/'+id+'/claim_paid',{method:'POST',body:'{}'}).catch(function(){}); }catch(e){}
 }
 
 /* ───────── билеты ───────── */
@@ -1083,7 +1094,7 @@ async function openCityPicker(){
     <div class="city-inner">
       ${CITY?`<button class="city-close" onclick="this.closest('.overlay').remove()">${I.close(20,'var(--text-1)')}</button>`:''}
       <div class="city-head">
-        <span class="city-kicker">tusa · афиша вечеринок</span>
+        <span class="city-kicker">AFTERS · афиша вечеринок</span>
         <h1 class="city-title">выбери<br>город</h1>
         <p class="city-sub">покажем party рядом с тобой</p>
       </div>
