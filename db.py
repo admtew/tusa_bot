@@ -43,6 +43,9 @@ def init() -> None:
             refs_needed INTEGER NOT NULL DEFAULT 0,-- сколько друзей привести за free-билет
             channel     TEXT NOT NULL DEFAULT '',  -- @канал для проверки подписки (без @)
             age_limit   TEXT NOT NULL DEFAULT '',  -- напр. "14+", "18+"
+            cover       TEXT NOT NULL DEFAULT 'ember', -- ключ обложки-градиента
+            city        TEXT NOT NULL DEFAULT 'Москва',
+            genre       TEXT NOT NULL DEFAULT '',  -- вайб: "techno · b2b" и т.п.
             status      TEXT NOT NULL DEFAULT 'active', -- active | cancelled | done
             created_at  INTEGER NOT NULL
         );
@@ -70,6 +73,16 @@ def init() -> None:
         );
         """
     )
+    # мягкие миграции для старых баз
+    for ddl in (
+        "ALTER TABLE events ADD COLUMN cover TEXT NOT NULL DEFAULT 'ember'",
+        "ALTER TABLE events ADD COLUMN city TEXT NOT NULL DEFAULT 'Москва'",
+        "ALTER TABLE events ADD COLUMN genre TEXT NOT NULL DEFAULT ''",
+    ):
+        try:
+            c.execute(ddl)
+        except sqlite3.OperationalError:
+            pass
     c.commit()
 
 
@@ -110,8 +123,8 @@ def create_event(org_id: int, data: dict) -> int:
     c = conn()
     cur = c.execute(
         """INSERT INTO events(org_id,title,description,starts_at,area,address,
-           price_text,pay_url,capacity,refs_needed,channel,age_limit,created_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,created_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             org_id,
             data["title"], data.get("description", ""), int(data["starts_at"]),
@@ -119,6 +132,8 @@ def create_event(org_id: int, data: dict) -> int:
             data.get("price_text", ""), data.get("pay_url", ""),
             int(data.get("capacity") or 0), int(data.get("refs_needed") or 0),
             data.get("channel", "").lstrip("@"), data.get("age_limit", ""),
+            str(data.get("cover") or "ember"),
+            str(data.get("city") or "Москва"), data.get("genre", ""),
             now(),
         ),
     )
@@ -126,12 +141,27 @@ def create_event(org_id: int, data: dict) -> int:
     return cur.lastrowid
 
 
-def list_events(upcoming_only: bool = True) -> list[sqlite3.Row]:
+def list_events(upcoming_only: bool = True, city: str | None = None) -> list[sqlite3.Row]:
     q = "SELECT * FROM events WHERE status='active'"
+    args: list = []
     if upcoming_only:
         q += f" AND starts_at > {now() - 6 * 3600}"  # показываем ещё 6ч после начала
+    if city:
+        q += " AND city=?"
+        args.append(city)
     q += " ORDER BY starts_at ASC"
-    return conn().execute(q).fetchall()
+    return conn().execute(q, args).fetchall()
+
+
+def city_counts() -> dict[str, int]:
+    rows = conn().execute(
+        f"SELECT city, COUNT(*) FROM events WHERE status='active' AND starts_at > {now() - 6 * 3600} GROUP BY city"
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def get_user(tg_id: int) -> sqlite3.Row | None:
+    return conn().execute("SELECT * FROM users WHERE tg_id=?", (tg_id,)).fetchone()
 
 
 def get_event(event_id: int) -> sqlite3.Row | None:
@@ -172,7 +202,7 @@ def create_ticket(event_id: int, user_id: int, kind: str) -> str:
 
 def user_tickets(user_id: int) -> list[sqlite3.Row]:
     return conn().execute(
-        """SELECT t.*, e.title, e.starts_at, e.area, e.address, e.age_limit
+        """SELECT t.*, e.title, e.starts_at, e.area, e.address, e.age_limit, e.cover
            FROM tickets t JOIN events e ON e.id = t.event_id
            WHERE t.user_id=? AND t.status!='revoked' AND e.status='active'
            ORDER BY e.starts_at ASC""",

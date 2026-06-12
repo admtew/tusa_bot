@@ -56,10 +56,13 @@ def event_json(e, me_id: int | None = None) -> dict:
         "price_text": e["price_text"], "pay_url": e["pay_url"],
         "capacity": e["capacity"], "refs_needed": e["refs_needed"],
         "channel": e["channel"], "age_limit": e["age_limit"],
+        "cover": e["cover"], "city": e["city"], "genre": e["genre"],
         "taken": taken,
         "sold_out": bool(e["capacity"] and taken >= e["capacity"]),
         "is_mine": me_id == e["org_id"],
     }
+    org = db.get_user(e["org_id"])
+    d["host"] = (org["username"] or org["first_name"] or "host") if org else "host"
     return d
 
 
@@ -67,7 +70,12 @@ def event_json(e, me_id: int | None = None) -> dict:
 
 async def h_events(request: web.Request):
     me = request["user"]["id"]
-    return web.json_response([event_json(e, me) for e in db.list_events()])
+    city = request.query.get("city") or None
+    return web.json_response([event_json(e, me) for e in db.list_events(city=city)])
+
+
+async def h_cities(request: web.Request):
+    return web.json_response(db.city_counts())
 
 
 async def h_event(request: web.Request):
@@ -161,10 +169,13 @@ async def h_my_tickets(request: web.Request):
     me = request["user"]["id"]
     out = []
     for t in db.user_tickets(me):
+        # точный адрес отдаём только незадолго до начала
+        reveal = t["starts_at"] - time.time() <= config.ADDRESS_REVEAL_HOURS * 3600
         out.append({
             "code": t["code"], "kind": t["kind"], "status": t["status"],
             "title": t["title"], "starts_at": t["starts_at"], "area": t["area"],
-            "age_limit": t["age_limit"],
+            "age_limit": t["age_limit"], "cover": t["cover"],
+            "address": t["address"] if reveal else None,
         })
     return web.json_response(out)
 
@@ -228,6 +239,14 @@ async def h_scan(request: web.Request):
     return web.json_response({"ok": True, "msg": f"✅ {name} — проходит!"})
 
 
+async def h_meta(request: web.Request):
+    """Имя бота для построения t.me-ссылок на клиенте (кэшируется)."""
+    app = request.app
+    if "bot_username" not in app:
+        app["bot_username"] = (await app["bot"].get_me()).username
+    return web.json_response({"bot": app["bot_username"]})
+
+
 async def h_index(request: web.Request):
     return web.FileResponse(WEBAPP_DIR / "index.html")
 
@@ -238,6 +257,8 @@ def make_web_app(bot) -> web.Application:
     app.add_routes([
         web.get("/", h_index),
         web.get("/api/events", h_events),
+        web.get("/api/cities", h_cities),
+        web.get("/api/meta", h_meta),
         web.post("/api/events", h_create_event),
         web.get("/api/events/{id}", h_event),
         web.post("/api/events/{id}/claim_free", h_claim_free),
