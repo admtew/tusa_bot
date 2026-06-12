@@ -19,7 +19,11 @@
   --display:'Archivo',sans-serif; --sans:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
   --r:18px;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
+  -webkit-touch-callout:none;}
+/* в полях ввода печатать и выделять можно */
+input,textarea{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default;}
 html,body{margin:0;height:100%;}
 body{background:var(--bg);font-family:var(--sans);color:var(--text-0);display:flex;flex-direction:column;height:100dvh;overflow:hidden;}
 .mono{font-family:var(--mono);font-feature-settings:"tnum";}
@@ -355,11 +359,15 @@ function avatar(name, size, accent){
 /* аватар самого пользователя: настоящее фото из Telegram, иначе буква */
 function avatarMe(size){
   if(ME.photo_url){
-    return `<img class="avatar" src="${esc(ME.photo_url)}" alt="" referrerpolicy="no-referrer"
-      style="width:${size}px;height:${size}px;object-fit:cover"
-      onerror="this.outerHTML='${avatar(ME.first_name,size,true).replace(/'/g,"\\'")}'">`;
+    return `<img class="avatar" src="${esc(ME.photo_url)}" alt="" referrerpolicy="no-referrer" `
+      + `data-n="${esc(ME.first_name||'')}" data-s="${size}" `
+      + `style="width:${size}px;height:${size}px;object-fit:cover" onerror="avatarErr(this)">`;
   }
   return avatar(ME.first_name, size, true);
+}
+/* если фото не загрузилось — заменяем на букву */
+function avatarErr(img){
+  img.outerHTML = avatar(img.getAttribute('data-n'), +img.getAttribute('data-s'), true);
 }
 document.getElementById('pin-ic').innerHTML = I.pin(13,'var(--accent)');
 document.getElementById('head-avatar').innerHTML = avatarMe(30);
@@ -994,6 +1002,12 @@ function boot(){
   else if(h==='tickets'){ go('tickets'); }
   else go('feed');
 }
+/* запрет контекстного меню и перетаскивания (кроме полей ввода) */
+document.addEventListener('contextmenu', function(e){
+  if(!e.target.closest('input,textarea')) e.preventDefault();
+});
+document.addEventListener('dragstart', function(e){ e.preventDefault(); });
+
 boot();
 </script>
 </body>
