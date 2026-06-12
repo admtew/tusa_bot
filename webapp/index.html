@@ -554,7 +554,7 @@ function shareRef(link, title){
   tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Го на «'+title+'»! Заходи по моей ссылке:'));
 }
 function shareEvent(link, title){
-  tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Смотри какая туса: '+title));
+  tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Смотри какая party: '+title));
 }
 async function claimFree(id){
   try{ await api('/api/events/'+id+'/claim_free',{method:'POST',body:'{}'});
@@ -692,7 +692,7 @@ function stepCap(d){ FORM.capacity=Math.max(0,(FORM.capacity||0)+d); document.ge
 function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); document.getElementById('f-refs').value=FORM.refs_needed; }
 async function publish(){
   const F = FORM;
-  if(!F.title.trim()){ toast('Дай тусе название',false); return; }
+  if(!F.title.trim()){ toast('Дай party название',false); return; }
   if(!F.date || !F.time){ toast('Укажи дату и время',false); return; }
   const starts = Math.floor(new Date(F.date+'T'+F.time).getTime()/1000);
   if(!starts || starts < Date.now()/1000){ toast('Дата уже в прошлом 🙃',false); return; }
@@ -752,7 +752,7 @@ function qtCard(connected){
       <div>
         <div class="ref-title">qtickets ${connected?'<span style="color:#2ecc71">подключён ✓</span>':'<span style="color:var(--text-3)">не подключён</span>'}</div>
         <div class="ref-sub">${connected
-          ? 'Бот сам тянет тарифы и ловит оплату на твоих платных тусах.'
+          ? 'Бот сам тянет тарифы и ловит оплату на твоих платных party.'
           : 'Подключи один раз — и бот будет показывать твои билеты (ВИП и т.д.) и автоматически выдавать QR после оплаты.'}</div>
       </div>
     </div>
@@ -819,7 +819,7 @@ async function openGuests(id){
           <div class="guest-st">${st}</div></div>
           ${g.kind==='paid_pending'?`<button class="approve-btn" onclick="approveTicket('${g.code}',${id},this)">Подтвердить</button>`:''}
         </div>`;
-      }).join(''):'<div class="empty-sub" style="text-align:center;margin:30px auto 0">Пока никого — поделись тусой!</div>'}
+      }).join(''):'<div class="empty-sub" style="text-align:center;margin:30px auto 0">Пока никого — поделись party!</div>'}
     </div>`;
   $overlays.appendChild(sh);
 }
@@ -871,7 +871,7 @@ function openQtConnect(){
       <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
     <div class="sheet-body">
       <div class="ref-sub" style="line-height:1.55;margin-bottom:16px">
-        Где взять токен: зайди на <b>qtickets.app</b> → «Настройки» → «Основное» → внизу страницы <b>API-токен</b>. Скопируй и вставь сюда. Делается один раз — дальше все твои платные тусы работают сами.
+        Где взять токен: зайди на <b>qtickets.app</b> → «Настройки» → «Основное» → внизу страницы <b>API-токен</b>. Скопируй и вставь сюда. Делается один раз — дальше все твои платные party работают сами.
       </div>
       <input class="input" id="qt-token" placeholder="Вставь API-токен" autocomplete="off">
       <div style="height:14px"></div>

@@ -19,8 +19,11 @@ DB_PATH: str = os.getenv("DB_PATH", "tusa.db")
 # Подкручивай по ситуации (см. README, раздел "Антифрод").
 NEW_ID_THRESHOLD: int = int(os.getenv("NEW_ID_THRESHOLD", "8500000000"))
 
-# За сколько часов до тусы слать напоминание с адресом
+# За сколько часов до начала слать напоминание с адресом
 ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "3"))
+
+# Контакт поддержки (показывается в /support). Поменяй на свой.
+SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@your_support")
 
 if not BOT_TOKEN:
     raise SystemExit("Заполни BOT_TOKEN в .env (токен из @BotFather)")

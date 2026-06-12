@@ -25,7 +25,7 @@ log = logging.getLogger("tusa")
 router = Router()
 
 
-def webapp_kb(path: str = "", text: str = "Открыть тусы 🎉") -> InlineKeyboardMarkup:
+def webapp_kb(path: str = "", text: str = "Открыть party 🎉") -> InlineKeyboardMarkup:
     url = config.WEBAPP_URL + (f"#{path}" if path else "")
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]]
@@ -56,12 +56,12 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
             _, eid, rid = payload.split("_", 2)
             event_id, referrer_id = int(eid), int(rid)
         except ValueError:
-            await message.answer("Хм, ссылка битая. Но тусы всё равно тут:", reply_markup=webapp_kb())
+            await message.answer("Ссылка битая. Но все party — тут 👇", reply_markup=webapp_kb())
             return
 
         event = db.get_event(event_id)
         if not event:
-            await message.answer("Этой тусы уже нет 😢 Но есть другие:", reply_markup=webapp_kb())
+            await message.answer("Этой party уже нет 😢 Но есть другие 👇", reply_markup=webapp_kb())
             return
 
         counted = False
@@ -76,11 +76,11 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
                 reason = "этот переход уже был засчитан"
 
         text = (
-            f"Привет, {user.first_name}! Тебя позвали на «{event['title']}» 🎉\n"
-            f"Жми кнопку — смотри детали и забирай свой билет."
+            f"<b>{user.first_name}, тебя зовут на «{event['title']}»</b> 🎉\n\n"
+            "Жми кнопку — детали и твой билет внутри."
         )
         if counted:
-            text += "\n\nДруг, который тебя позвал, стал на шаг ближе к free-проходке 🔥"
+            text += "\n\nТот, кто тебя позвал, стал ближе к free-проходке 🔥"
         elif reason:
             log.info("referral not counted for %s: %s", user.id, reason)
         await message.answer(text, reply_markup=webapp_kb(f"event/{event_id}"))
@@ -93,20 +93,25 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
         except ValueError:
             event_id = 0
         if event_id and db.get_event(event_id):
-            await message.answer("Вот эта туса 👇", reply_markup=webapp_kb(f"event/{event_id}"))
+            await message.answer("Вот эта party 👇", reply_markup=webapp_kb(f"event/{event_id}"))
             return
 
-    await message.answer("Привет! Все тусы города — в одном месте 👇", reply_markup=webapp_kb())
+    await _send_welcome(message)
 
 
 @router.message(CommandStart())
 async def start_plain(message: Message) -> None:
-    user = message.from_user
-    db.upsert_user(user.id, user.username, user.first_name)
+    db.upsert_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
+    await _send_welcome(message)
+
+
+async def _send_welcome(message: Message) -> None:
+    name = message.from_user.first_name or "привет"
     await message.answer(
-        f"Привет, {user.first_name}! 🎉\n\n"
-        "Здесь собраны тусовки города: смотри афишу, забирай билеты, зови друзей.\n"
-        "Организатор? Создавай свою тусу прямо в приложении.",
+        f"<b>{name}, добро пожаловать в party</b> 🎉\n\n"
+        "Все вечеринки города — в одном месте.\n"
+        "Выбирай, забирай билет, зови друзей.\n\n"
+        "Жми кнопку ниже 👇",
         reply_markup=webapp_kb(),
     )
 
@@ -114,14 +119,31 @@ async def start_plain(message: Message) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(
-        "Как это работает:\n\n"
-        "🎟 <b>Гостям</b> — открой приложение, выбери тусу, забери билет. "
-        "QR покажешь на входе. Адрес придёт сюда незадолго до начала.\n\n"
-        "🪩 <b>Организаторам</b> — кнопка «Создать» в приложении: афиша, "
-        "free-вход за друзей, гостевой список и сканер QR на входе.\n\n"
-        "Чтобы бот проверял подписку на твой канал — добавь его админом канала.",
+        "<b>Как это работает</b>\n\n"
+        "🎟 <b>Гостям</b>\n"
+        "Открой приложение, выбери party, забери билет. QR покажешь на входе — "
+        "точный адрес придёт сюда незадолго до начала.\n\n"
+        "🪩 <b>Организаторам</b>\n"
+        "Кнопка «Создать»: своя афиша, free-вход за приведённых друзей, "
+        "гостевой список и сканер QR. Платные билеты — через qtickets, "
+        "бот сам поймает оплату (подключается в профиле).\n\n"
+        "Вопросы — /support",
         reply_markup=webapp_kb(),
     )
+
+
+@router.message(Command("support"))
+async def cmd_support(message: Message) -> None:
+    await message.answer(
+        "<b>Поддержка</b> 💬\n\n"
+        f"Нашёл баг или есть вопрос — пиши {config.SUPPORT_CONTACT}.\n"
+        "Постараемся ответить быстро.",
+    )
+
+
+@router.message(Command("app"))
+async def cmd_app(message: Message) -> None:
+    await message.answer("Все party — внутри 👇", reply_markup=webapp_kb())
 
 
 # ---------- напоминания ----------
@@ -133,7 +155,7 @@ async def send_reminders(bot: Bot) -> None:
         try:
             await bot.send_message(
                 t["user_id"],
-                f"Напоминаю: завтра туса! 🎉\n<b>{t['title']}</b>\n{when}, {t['area']}\n\n"
+                f"<b>Завтра party!</b> 🎉\n<b>{t['title']}</b>\n{when}, {t['area']}\n\n"
                 "Билет — в приложении, вкладка «Билеты».",
                 reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
             )
@@ -167,8 +189,17 @@ async def main() -> None:
 
     # кнопка меню слева от поля ввода — открывает Mini App
     await bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(text="Тусы 🎉", web_app=WebAppInfo(url=config.WEBAPP_URL))
+        menu_button=MenuButtonWebApp(text="party 🎉", web_app=WebAppInfo(url=config.WEBAPP_URL))
     )
+
+    # список команд (показывается по кнопке «/» в чате)
+    from aiogram.types import BotCommand
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Открыть party 🎉"),
+        BotCommand(command="app", description="Все вечеринки города"),
+        BotCommand(command="help", description="Как это работает"),
+        BotCommand(command="support", description="Поддержка"),
+    ])
 
     # веб-сервер Mini App + API
     web_app = make_web_app(bot)
