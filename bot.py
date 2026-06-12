@@ -7,9 +7,10 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
+    BotCommand,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    MenuButtonWebApp,
+    MenuButtonCommands,
     Message,
     WebAppInfo,
 )
@@ -123,11 +124,11 @@ async def start_plain(message: Message) -> None:
 
 
 async def _send_welcome(message: Message) -> None:
-    name = message.from_user.first_name or "привет"
+    name = message.from_user.first_name or "Привет"
     await message.answer(
-        f"<b>{name}, добро пожаловать в party</b> 🎉\n\n"
+        f"<b>{name}, добро пожаловать в AFTERS</b> 🎉\n\n"
         "Все вечеринки города — в одном месте.\n"
-        "Выбирай, забирай билет, зови друзей.\n\n"
+        "Выбирай событие, покупай билет и знакомься с новыми людьми.\n\n"
         "Жми кнопку ниже 👇",
         reply_markup=webapp_kb(),
     )
@@ -246,18 +247,16 @@ async def main() -> None:
     dp = Dispatcher()
     dp.include_router(router)
 
-    # кнопка меню слева от поля ввода — открывает Mini App
-    await bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(text="party 🎉", web_app=WebAppInfo(url=config.WEBAPP_URL))
-    )
+    # меню-кнопка = список команд (а не Mini App), иначе команды прячутся.
+    # Само приложение открывается кнопкой в сообщениях.
+    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
-    # список команд (показывается по кнопке «/» в чате)
-    from aiogram.types import BotCommand
+    # список команд (виден по кнопке «/» / «Меню» в чате)
     await bot.set_my_commands([
-        BotCommand(command="start", description="Открыть party 🎉"),
-        BotCommand(command="app", description="Все вечеринки города"),
-        BotCommand(command="help", description="Как это работает"),
-        BotCommand(command="support", description="Поддержка"),
+        BotCommand(command="start", description="🎉 Открыть AFTERS"),
+        BotCommand(command="app", description="🎟 Все вечеринки города"),
+        BotCommand(command="help", description="ℹ️ Как это работает"),
+        BotCommand(command="support", description="💬 Поддержка"),
     ])
 
     # веб-сервер Mini App + API
