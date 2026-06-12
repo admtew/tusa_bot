@@ -10,8 +10,11 @@ BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL: str = os.getenv("WEBAPP_URL", "https://example.com").rstrip("/")
 # Порт локального веб-сервера (API + статика Mini App)
 PORT: int = int(os.getenv("PORT", "8080"))
-# Путь к файлу базы данных
-DB_PATH: str = os.getenv("DB_PATH", "tusa.db")
+# Путь к файлу базы данных.
+# Если подключён постоянный диск Railway (Volume) на /data — пишем туда,
+# чтобы события и билеты НЕ стирались при каждом деплое.
+_default_db = "/data/tusa.db" if os.path.isdir("/data") else "tusa.db"
+DB_PATH: str = os.getenv("DB_PATH", _default_db)
 
 # --- Антифрод ---
 # Порог "слишком свежего" аккаунта для рефералок. 0 = выключено (рекомендуется,
