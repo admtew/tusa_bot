@@ -66,14 +66,14 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
 
         counted = False
         reason = ""
-        if not is_new:
-            reason = "ты уже был в боте — рефералка считается только за новых людей"
-        elif user.id > config.NEW_ID_THRESHOLD:
-            reason = "аккаунт слишком свежий"  # антифрод: новорег
+        if referrer_id == user.id:
+            reason = "сам себя пригласить нельзя"
+        elif config.NEW_ID_THRESHOLD and user.id > config.NEW_ID_THRESHOLD:
+            reason = "аккаунт отсечён антифродом по ID"
         else:
             counted = db.add_referral(event_id, referrer_id, user.id)
             if not counted:
-                reason = "этот переход уже был засчитан"
+                reason = "этот человек уже был засчитан на это событие"
 
         text = (
             f"<b>{user.first_name}, тебя зовут на «{event['title']}»</b> 🎉\n\n"
@@ -81,6 +81,23 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
         )
         if counted:
             text += "\n\nТот, кто тебя позвал, стал ближе к free-проходке 🔥"
+            # уведомляем пригласившего, чтобы он сразу видел прогресс
+            try:
+                valid = 0
+                for r in db.referrals_of(event_id, referrer_id):
+                    if await check_subscribed(bot, event["channel"], r["referred_id"]):
+                        valid += 1
+                need = event["refs_needed"] or 0
+                msg = (f"🔥 <b>{user.first_name} присоединился по твоей ссылке</b>\n"
+                       f"«{event['title']}» — прогресс: {valid}")
+                if need:
+                    msg += f" из {need}"
+                    if valid >= need:
+                        msg += "\n\nМожно забирать free-билет! 🎟"
+                await bot.send_message(referrer_id, msg,
+                                       reply_markup=webapp_kb(f"event/{event_id}"))
+            except Exception as e:
+                log.warning("notify referrer %s failed: %s", referrer_id, e)
         elif reason:
             log.info("referral not counted for %s: %s", user.id, reason)
         await message.answer(text, reply_markup=webapp_kb(f"event/{event_id}"))

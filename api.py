@@ -118,6 +118,10 @@ async def h_event(request: web.Request):
     from bot import check_subscribed  # локальный импорт, чтобы не плодить циклы
 
     data["subscribed"] = await check_subscribed(bot, e["channel"], me)
+    # точный адрес видят владелец и модераторы (для проверки), гостям — скрыт
+    if me == e["org_id"] or me in config.ADMIN_IDS:
+        data["address"] = e["address"]
+        data["is_admin_view"] = me in config.ADMIN_IDS and me != e["org_id"]
     me_username = (await bot.get_me()).username
     data["ref_link"] = f"https://t.me/{me_username}?start=ref_{e['id']}_{me}"
     data["share_link"] = f"https://t.me/{me_username}?start=evt_{e['id']}"
@@ -141,18 +145,44 @@ def _moderation_on() -> bool:
 
 
 async def _notify_admins_new(bot, event_id: int, title: str, org: str):
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Одобрить", callback_data=f"mod_ok_{event_id}"),
-        InlineKeyboardButton(text="🚫 Отклонить", callback_data=f"mod_no_{event_id}"),
-    ]])
+    import datetime
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    e = db.get_event(event_id)
+    open_btn = InlineKeyboardButton(
+        text="👁 Открыть карточку",
+        web_app=WebAppInfo(url=f"{config.WEBAPP_URL}#event/{event_id}"),
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [open_btn],
+        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"mod_ok_{event_id}"),
+         InlineKeyboardButton(text="🚫 Отклонить", callback_data=f"mod_no_{event_id}")],
+    ])
+    if e:
+        when = datetime.datetime.fromtimestamp(e["starts_at"]).strftime("%d.%m.%Y %H:%M")
+        price = e["price_text"] or ("ссылка qtickets" if e["pay_url"] else "free")
+        lines = [
+            "🆕 <b>На модерацию</b>",
+            f"<b>{e['title']}</b>",
+            f"🗓 {when}",
+            f"🏙 {e['city']}" + (f" · {e['area']}" if e["area"] else ""),
+        ]
+        if e["address"]:
+            lines.append(f"📍 Адрес: {e['address']}")
+        lines.append(f"💸 {price}" + (f" · {e['age_limit']}" if e["age_limit"] else ""))
+        if e["capacity"]:
+            lines.append(f"👥 Лимит: {e['capacity']}")
+        if e["genre"]:
+            lines.append(f"🎵 {e['genre']}")
+        if e["description"]:
+            desc = e["description"][:600]
+            lines.append(f"\n{desc}")
+        lines.append(f"\nОрганизатор: {org} · ID {event_id}")
+        text = "\n".join(lines)
+    else:
+        text = f"🆕 <b>На модерацию</b>\n«{title}»\nОрганизатор: {org}\nID: {event_id}"
     for admin in config.ADMIN_IDS:
         try:
-            await bot.send_message(
-                admin,
-                f"🆕 <b>На модерацию</b>\n«{title}»\nОрганизатор: {org}\nID: {event_id}",
-                reply_markup=kb,
-            )
+            await bot.send_message(admin, text, reply_markup=kb)
         except Exception:
             pass
 

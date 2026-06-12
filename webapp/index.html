@@ -312,6 +312,7 @@ const ME = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {id:0, first_name:'�
 const $screen = document.getElementById('screen');
 const $overlays = document.getElementById('overlays');
 let BOT = '';
+const ALL_CITIES = '__all__';
 let CITY = null;
 try { CITY = localStorage.getItem('tusa_city'); } catch(e){}
 let TAB = 'feed';
@@ -442,15 +443,16 @@ function plural(n){ const a=n%10,b=n%100;
 
 async function renderFeed(){
   $screen.innerHTML = '<div class="loading">ЗАГРУЗКА…</div>';
+  const cityParam = (CITY && CITY!==ALL_CITIES) ? CITY : '';
   let feed;
-  try { feed = await api('/api/events?city='+encodeURIComponent(CITY||'')); }
+  try { feed = await api('/api/events?city='+encodeURIComponent(cityParam)); }
   catch(e){ $screen.innerHTML = `<div class="empty"><div class="empty-title">не загрузилось</div><div class="empty-sub">${esc(e.message)}</div></div>`; return; }
   if(TAB!=='feed') return;
   if(!feed.length){
     $screen.innerHTML = `<div class="empty" style="min-height:80%">
       <div class="empty-ic">${I.spark(26)}</div>
       <div class="empty-title">пока пусто</div>
-      <div class="empty-sub">${CITY?'В городе '+esc(CITY)+' афиша ещё не наполнилась.':'Афиша пуста.'} Стань первым — создай свою party.</div>
+      <div class="empty-sub">${cityParam?'В городе '+esc(cityParam)+' афиша ещё не наполнилась.':'Афиша пуста.'} Стань первым — создай свою party.</div>
       <button class="btn btn-primary" onclick="go('create')">Создать party</button></div>`;
     return;
   }
@@ -504,7 +506,7 @@ function cardEditorial(e){
       <div class="metarow"><span>${f.dow} ${f.date}</span><span class="dot">·</span><span>${f.time}</span>${e.age_limit?`<span class="dot">·</span><span>${esc(e.age_limit)}</span>`:''}</div>
       <div class="pcard-title">${esc(e.title)}</div>
       <div class="pcard-sub">
-        <span class="loc">${I.pin()} ${esc(e.area)||'место уточняется'}</span>
+        <span class="loc">${I.pin()} ${CITY===ALL_CITIES?esc(e.city)+(e.area?' · '+esc(e.area):''):(esc(e.area)||'место уточняется')}</span>
         <span class="loc">${I.users()} идут ${e.taken}</span>
       </div>
     </div></button>`;
@@ -586,8 +588,12 @@ async function openDetail(id){
         ${e.age_limit?`<div class="spec"><span class="spec-k">ВОЗРАСТ</span><span class="spec-v">${esc(e.age_limit)}</span></div>`:''}
         <div class="spec"><span class="spec-k">МЕСТА</span><span class="spec-v">${e.capacity?(e.sold_out?'нет мест':'осталось '+left+' из '+e.capacity):'без лимита'}</span></div>
         <div class="spec"><span class="spec-k">ЦЕНА</span><span class="spec-v">${priceLabel(e)}</span></div>
+        ${e.address?`<div class="spec"><span class="spec-k">АДРЕС</span><span class="spec-v" style="font-family:var(--sans)">${esc(e.address)}</span></div>`:''}
       </div>
-      <div class="lock-note">${I.lock()}<span>Точный адрес придёт в чат с ботом <b>незадолго до начала</b></span></div>
+      ${e.address
+        ? `<div class="lock-note">${I.lock()}<span>${e.is_admin_view?'Адрес виден тебе как модератору. Гостям он скрыт до начала.':'Адрес виден тебе как организатору. Гостям придёт незадолго до начала.'}</span></div>`
+        : `<div class="lock-note">${I.lock()}<span>Точный адрес придёт в чат с ботом <b>незадолго до начала</b></span></div>`}
+      ${e.status&&e.status!=='active'?`<div class="lock-note" style="color:#f39c12">${I.spark(15,'#f39c12')}<span>Статус: ${e.status==='pending'?'на модерации':e.status}</span></div>`:''}
       ${subBlock}
       ${refBlock}
       <div style="height:90px"></div>
@@ -674,8 +680,15 @@ function showQR(i){
 }
 
 /* ───────── создание ───────── */
-let FORM = { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0, age_limit:'18+', price_text:'', pay_url:'', refs_needed:0, channel:'', genre:'', cover:'violet', cover_data:'' };
+function blankForm(){
+  return { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0,
+    age_limit:'18+', price_num:'', pay_url:'', refs_needed:0, channel:'', genre:'',
+    cover:'violet', cover_data:'',
+    city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва' };
+}
+let FORM = blankForm();
 function renderCreate(){
+  if(!FORM.city) FORM.city = (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва';
   const F = FORM;
   const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
   $screen.innerHTML = `
@@ -713,7 +726,7 @@ function renderCreate(){
 
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ЛИМИТ МЕСТ</span><span class="field-hint">0 = без лимита</span></div>
-        <div class="stepper"><button onclick="stepCap(-10)">−</button><input class="step-input" id="f-cap" value="${F.capacity}" oninput="FORM.capacity=+this.value||0"><button onclick="stepCap(10)">+</button></div></div>
+        <div class="stepper"><button onclick="stepCap(-10)">−</button><input class="step-input" id="f-cap" inputmode="numeric" value="${F.capacity}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.capacity=+this.value||0"><button onclick="stepCap(10)">+</button></div></div>
       <div class="field"><div class="field-lab"><span class="mono">ВОЗРАСТ</span></div>
         <div class="seg">${['14+','18+'].map(a=>`<button class="seg-opt${F.age_limit===a?' on':''}" onclick="FORM.age_limit='${a}';renderCreate()">${a}</button>`).join('')}</div></div>
     </div>
@@ -721,8 +734,13 @@ function renderCreate(){
     <div class="field"><div class="field-lab"><span class="mono">ВАЙБ / ЖАНР</span><span class="field-hint">напр. techno · b2b</span></div>
       <input class="input" placeholder="house party" value="${esc(F.genre)}" oninput="FORM.genre=this.value"></div>
 
-    <div class="field"><div class="field-lab"><span class="mono">ЦЕНА ТЕКСТОМ</span><span class="field-hint">пусто = free</span></div>
-      <input class="input" placeholder="от 500 ₽" value="${esc(F.price_text)}" oninput="FORM.price_text=this.value"></div>
+    <div class="field"><div class="field-lab"><span class="mono">ЦЕНА, ₽</span><span class="field-hint">пусто = free · только цифры</span></div>
+      <div class="input-prefix" style="position:relative">
+        <input class="input" inputmode="numeric" placeholder="500" value="${esc(F.price_num)}"
+          oninput="this.value=this.value.replace(/\\D/g,'');FORM.price_num=this.value"
+          style="padding-right:34px">
+        <span style="position:absolute;right:15px;top:50%;transform:translateY(-50%);color:var(--text-2);font-family:var(--mono)">₽</span>
+      </div></div>
 
     <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА QTICKETS</span><span class="field-hint">если платно</span></div>
       <input class="input" id="f-payurl" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
@@ -734,10 +752,13 @@ function renderCreate(){
 
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">FREE ЗА ДРУЗЕЙ</span><span class="field-hint">0 = выкл</span></div>
-        <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" value="${F.refs_needed}" oninput="FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
+        <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" inputmode="numeric" value="${F.refs_needed}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
       <div class="field"><div class="field-lab"><span class="mono">КАНАЛ</span><span class="field-hint">подписка для входа</span></div>
         <input class="input" placeholder="mychannel" value="${esc(F.channel)}" oninput="FORM.channel=this.value"></div>
     </div>
+
+    <div class="field"><div class="field-lab"><span class="mono">ГОРОД</span></div>
+      <div class="seg" style="flex-wrap:wrap">${CITIES.map(c=>`<button class="seg-opt${F.city===c.name?' on':''}" style="flex:0 0 auto;padding:9px 13px" onclick="FORM.city='${c.name}';renderCreate()">${c.name}</button>`).join('')}</div></div>
 
     <div class="create-cta"><button class="btn btn-primary cta-go" onclick="confirmPublish()">Опубликовать party ${I.arrow()}</button></div>
   </div>`;
@@ -778,16 +799,18 @@ async function publish(){
   const F = FORM;
   const starts = Math.floor(new Date(F.date+'T'+F.time).getTime()/1000);
   if(!starts || starts < Date.now()/1000){ toast('Дата уже в прошлом 🙃',false); return; }
+  const priceText = F.price_num ? (Number(F.price_num).toLocaleString('ru-RU')+' ₽') : '';
   try{
     const r = await api('/api/events',{method:'POST',body:JSON.stringify({
       title:F.title.trim(), description:F.description, starts_at:starts,
       area:F.area, address:F.address, capacity:F.capacity, age_limit:F.age_limit,
-      price_text:F.price_text, pay_url:F.pay_url, refs_needed:F.refs_needed,
-      channel:F.channel, genre:F.genre, cover:F.cover, cover_data:F.cover_data, city:CITY||'Москва',
+      price_text:priceText, pay_url:F.pay_url, refs_needed:F.refs_needed,
+      channel:F.channel, genre:F.genre, cover:F.cover, cover_data:F.cover_data,
+      city:F.city||'Москва',
     })});
     haptic();
     toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
-    FORM = { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0, age_limit:'18+', price_text:'', pay_url:'', refs_needed:0, channel:'', genre:'', cover:'violet', cover_data:'' };
+    FORM = blankForm();
     if(r.status==='pending'){ PSEG='host'; go('profile'); }
     else { go('feed'); setTimeout(function(){ openDetail(r.id); }, 350); }
   }catch(err){ toast(err.message,false); }
@@ -1065,6 +1088,10 @@ async function openCityPicker(){
         <p class="city-sub">покажем party рядом с тобой</p>
       </div>
       <div class="city-list">
+        <button class="city-row${CITY===ALL_CITIES?' on':''}" onclick="pickCity('${ALL_CITIES}')">
+          <div class="city-row-mid"><div class="city-name">Все города</div></div>
+          ${CITY===ALL_CITIES?`<span class="city-check">${I.check(15,'#fff')}</span>`:I.arrow(18,'var(--text-3)')}
+        </button>
         ${CITIES.map(function(c){
           const on = CITY===c.name;
           return `<button class="city-row${on?' on':''}" onclick="pickCity('${c.name}')">
@@ -1076,10 +1103,11 @@ async function openCityPicker(){
     </div></div>`;
   $overlays.appendChild(ov);
 }
+function cityLabel(){ return CITY===ALL_CITIES ? 'все города' : (CITY||'город'); }
 function pickCity(name){
   CITY = name;
   try { localStorage.setItem('tusa_city', name); } catch(e){}
-  document.getElementById('city-name').textContent = name;
+  document.getElementById('city-name').textContent = cityLabel();
   const ov = document.getElementById('city-ov'); if(ov) ov.remove();
   FILTER = {date:null,type:'все'};
   go('feed');
@@ -1089,11 +1117,16 @@ function pickCity(name){
 function boot(){
   renderTabbar();
   api('/api/meta').then(function(m){ BOT = m.bot; }).catch(function(){});
-  if(CITY) document.getElementById('city-name').textContent = CITY;
-  else openCityPicker();
   const h = (location.hash||'').slice(1);
-  if(h.indexOf('event/')===0){ go('feed'); openDetail(parseInt(h.slice(6))||0); }
-  else if(h==='tickets'){ go('tickets'); }
+  // если открыли по прямой ссылке на событие (в т.ч. модератор) — город не спрашиваем
+  if(h.indexOf('event/')===0){
+    if(!CITY){ CITY = ALL_CITIES; try{ localStorage.setItem('tusa_city', CITY); }catch(e){} }
+    document.getElementById('city-name').textContent = cityLabel();
+    go('feed'); openDetail(parseInt(h.slice(6))||0); return;
+  }
+  if(CITY) document.getElementById('city-name').textContent = cityLabel();
+  else openCityPicker();
+  if(h==='tickets'){ go('tickets'); }
   else go('feed');
 }
 /* запрет контекстного меню и перетаскивания (кроме полей ввода) */
