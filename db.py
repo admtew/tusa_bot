@@ -130,6 +130,8 @@ def init() -> None:
         # этап 2: пруф оплаты (скрин/PDF) для ручного флоу
         "ALTER TABLE tickets ADD COLUMN proof_img BLOB",
         "ALTER TABLE tickets ADD COLUMN proof_mime TEXT NOT NULL DEFAULT ''",
+        # платное промо: до какого времени событие в топе афиши (0 = не продвигается)
+        "ALTER TABLE events ADD COLUMN featured_until INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             c.execute(ddl)
@@ -566,8 +568,22 @@ def list_events(upcoming_only: bool = True, city: str | None = None) -> list[sql
     if city:
         q += " AND city=?"
         args.append(city)
-    q += " ORDER BY starts_at ASC"
+    # продвигаемые (featured_until > now) идут первыми, затем по дате
+    q += f" ORDER BY (CASE WHEN featured_until > {now()} THEN 0 ELSE 1 END), starts_at ASC"
     return conn().execute(q, args).fetchall()
+
+
+def set_featured(event_id: int, until: int) -> bool:
+    c = conn()
+    cur = c.execute("UPDATE events SET featured_until=? WHERE id=?", (int(until), event_id))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def all_user_ids() -> list[int]:
+    """Все пользователи бота (для промо-рассылки)."""
+    rows = conn().execute("SELECT tg_id FROM users").fetchall()
+    return [r[0] for r in rows]
 
 
 def city_counts() -> dict[str, int]:

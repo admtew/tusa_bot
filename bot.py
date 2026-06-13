@@ -381,6 +381,60 @@ async def cmd_unverify(message: Message) -> None:
     await message.answer(f"Галочка у {parts[1]} снята.")
 
 
+# ---------- платное промо (только админ) ----------
+
+@router.message(Command("feature"))
+async def cmd_feature(message: Message) -> None:
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("Использование: <code>/feature ID [дней]</code> — поднять событие в топ афиши.")
+        return
+    eid = int(parts[1])
+    days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 7
+    e = db.get_event(eid)
+    if not e:
+        await message.answer("Событие не найдено.")
+        return
+    db.set_featured(eid, db.now() + days * 86400)
+    await message.answer(f"🔥 «{e['title']}» в топе афиши на {days} дн.")
+    try:
+        await message.bot.send_message(
+            e["org_id"], f"🔥 Твоё событие «{e['title']}» подняли в топ афиши на {days} дн!")
+    except Exception:
+        pass
+
+
+@router.message(Command("unfeature"))
+async def cmd_unfeature(message: Message) -> None:
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        return
+    db.set_featured(int(parts[1]), 0)
+    await message.answer("Промо снято.")
+
+
+@router.message(Command("promo"))
+async def cmd_promo(message: Message, bot: Bot) -> None:
+    """Промо-пуш по ВСЕМ пользователям бота (платный продукт)."""
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    text = (message.text or "")[len("/promo"):].strip()
+    if not text and message.reply_to_message:
+        text = message.reply_to_message.html_text or message.reply_to_message.text or ""
+    if not text:
+        await message.answer("Использование: <code>/promo текст</code> (или ответом на сообщение) — рассылка всем.")
+        return
+    from notify import broadcast
+    ids = db.all_user_ids()
+    await message.answer(f"📣 Шлю промо {len(ids)} пользователям…")
+    sent = await broadcast(bot, ids, text)
+    await message.answer(f"Готово: доставлено {sent} из {len(ids)}.")
+
+
 # ---------- напоминания ----------
 
 async def send_reminders(bot: Bot) -> None:

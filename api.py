@@ -110,6 +110,7 @@ def event_json(e, me_id: int | None = None) -> dict:
         "org_id": e["org_id"],
         "status": e["status"],
         "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
+        "featured": bool(e["featured_until"] and e["featured_until"] > int(time.time())) if "featured_until" in e.keys() else False,
         "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
         "cover_ver": e["created_at"],   # версия для обхода кэша картинок
         "photos": db.event_photo_count(e["id"]),

@@ -83,6 +83,7 @@ input,textarea,select{font-family:inherit;}
 .cover-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;}
 .pill-live{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:1.4px;padding:5px 9px;border-radius:6px;background:rgba(0,0,0,0.45);backdrop-filter:blur(8px);color:#fff;border:1px solid rgba(255,255,255,0.2);}
 .pill-live.solid{background:var(--accent);border-color:var(--accent);}
+.pill-live.promo{background:linear-gradient(90deg,#ff8a3a,#ff3d5a);border-color:transparent;color:#fff;}
 .pill-price{font-family:var(--mono);font-size:11px;font-weight:600;padding:5px 9px;border-radius:6px;background:rgba(0,0,0,0.45);backdrop-filter:blur(8px);color:#fff;border:1px solid rgba(255,255,255,0.18);}
 .pcard-body{padding:13px 2px 0;}
 .metarow{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;letter-spacing:0.6px;color:var(--text-2);}
@@ -559,7 +560,7 @@ function cardEditorial(e){
     <div class="pcard-cover ${covClass(e)}" ${coverStyle(e)}>
       <div class="cover-mark">${e.has_cover?'':firstWord(e.title)}</div>
       <div class="cover-top">
-        <span class="pill-live${e.sold_out?' solid':''}">${e.sold_out?'SOLD OUT':'ДРОП'}</span>
+        <span class="pill-live${e.featured?' promo':e.sold_out?' solid':''}">${e.featured?'🔥 ПРОМО':e.sold_out?'SOLD OUT':'ДРОП'}</span>
         <span class="pill-price">${priceLabel(e)}</span>
       </div>
     </div>
