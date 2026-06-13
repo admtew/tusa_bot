@@ -69,6 +69,9 @@ input,textarea,select{font-family:inherit;}
 .drail-mon{font-size:8.5px;letter-spacing:0.6px;color:var(--text-3);}
 .drail-all-l{font-size:12px;letter-spacing:0.5px;color:var(--text-0);font-weight:600;}
 .drail-all-s{font-size:8.5px;color:var(--text-3);}
+.drail-day{position:relative;}
+.drail-day.has-ev::after{content:'';position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent);}
+.drail-day.on.has-ev::after{background:#fff;}
 .drail-day.on,.drail-all.on{background:var(--accent);border-color:var(--accent);}
 .drail-day.on .drail-dow,.drail-day.on .drail-num,.drail-day.on .drail-mon,.drail-all.on .drail-all-l,.drail-all.on .drail-all-s{color:#fff;}
 
@@ -373,6 +376,14 @@ const priceLabel = e => e.price_text ? esc(e.price_text) : 'FREE';
 const covCls = c => 'cov cov-' + (COVERS.indexOf(c)>=0?c:'ember');
 const firstWord = t => esc((t||'').split(' ')[0]);
 const hhmm = ts => { const d=new Date(ts*1000); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+/* скользящий календарь от сегодня на N дней (лента всегда выглядит наполненной) */
+function calendarDays(n){
+  const out=[]; const base=new Date(); base.setHours(0,0,0,0);
+  for(let i=0;i<n;i++){ const d=new Date(base.getTime()+i*86400000);
+    out.push({ day:d.getDate(), mon:MON[d.getMonth()], dow:DOW[d.getDay()],
+      date:`${d.getDate()} ${MON[d.getMonth()]}` }); }
+  return out;
+}
 const timeRange = e => e.ends_at ? hhmm(e.starts_at)+' — '+hhmm(e.ends_at) : hhmm(e.starts_at);
 /* скелетон-загрузка вместо пустого экрана */
 function skeleton(kind){
@@ -497,16 +508,10 @@ async function renderFeed(){
   try { feed = await api('/api/events?city='+encodeURIComponent(cityParam)); }
   catch(e){ $screen.innerHTML = `<div class="empty"><div class="empty-title">не загрузилось</div><div class="empty-sub">${esc(e.message)}</div></div>`; return; }
   if(TAB!=='feed') return;
-  if(!feed.length){
-    $screen.innerHTML = `<div class="empty" style="min-height:80%">
-      <div class="empty-ic">${I.spark(26)}</div>
-      <div class="empty-title">пока пусто</div>
-      <div class="empty-sub">${cityParam?'В городе '+esc(cityParam)+' афиша ещё не наполнилась.':'Афиша пуста.'} Стань первым — создай свою party.</div>
-      <button class="btn btn-primary" onclick="go('create')">Создать party</button></div>`;
-    return;
-  }
-  const dates = []; const seen = {};
-  feed.forEach(e=>{ const f=fmt(e.starts_at); if(!seen[f.date]){seen[f.date]=1;dates.push(f);} });
+  // даты, где есть события (чтобы подсветить в календаре)
+  const eventDates = {};
+  feed.forEach(e=>{ eventDates[fmt(e.starts_at).date]=1; });
+  const cal = calendarDays(28);  // скользящий календарь от сегодня — лента всегда выглядит заполненной
   const list = feed.filter(e=>{
     const f = fmt(e.starts_at);
     if(FILTER.date && f.date!==FILTER.date) return false;
@@ -522,19 +527,23 @@ async function renderFeed(){
       <div class="date-rail">
         <button class="drail-all${!FILTER.date?' on':''}" onclick="setDateFilter(null)">
           <span class="drail-all-l mono">ВСЕ</span><span class="drail-all-s">даты</span></button>
-        ${dates.map(f=>`
-          <button class="drail-day${FILTER.date===f.date?' on':''}" onclick="setDateFilter('${f.date}')">
+        ${cal.map(f=>`
+          <button class="drail-day${FILTER.date===f.date?' on':''}${eventDates[f.date]?' has-ev':''}" onclick="setDateFilter('${f.date}')">
             <span class="drail-dow mono">${f.dow}</span><span class="drail-num">${f.day}</span><span class="drail-mon mono">${f.mon}</span></button>`).join('')}
       </div>
       <div class="chips-row">
         ${['все','free','платные','18+'].map(c=>`<button class="chip${FILTER.type===c?' chip-on':''}" onclick="setTypeFilter('${c}')">${c}</button>`).join('')}
       </div>
     </div>
-    ${list.length ? `<div class="feed">${list.map(cardEditorial).join('')}</div>` : `
+    ${list.length ? `<div class="feed">${list.map(cardEditorial).join('')}</div>` : (feed.length ? `
       <div class="empty"><div class="empty-ic">${I.spark(22)}</div>
         <div class="empty-title">ничего не нашлось</div>
         <div class="empty-sub">Поменяй дату или тип — или сбрось фильтры.</div>
-        <button class="btn btn-ghost" onclick="resetFilters()">Сбросить фильтры</button></div>`}
+        <button class="btn btn-ghost" onclick="resetFilters()">Сбросить фильтры</button></div>` : `
+      <div class="empty"><div class="empty-ic">${I.spark(22)}</div>
+        <div class="empty-title">скоро здесь будет жарко</div>
+        <div class="empty-sub">${cityParam?'В городе '+esc(cityParam)+' пока нет событий.':'Событий пока нет.'} Стань первым — создай свою party.</div>
+        <button class="btn btn-primary" onclick="go('create')">Создать party</button></div>`)}
     <div style="height:24px"></div>`;
 }
 function setDateFilter(d){ FILTER.date = (FILTER.date===d)?null:d; renderFeed(); }
@@ -691,10 +700,9 @@ function claimPaid(id){
     <div class="sheet-head"><div class="sheet-title">Подтвердить оплату</div>
       <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
     <div class="sheet-body">
-      <div class="ref-sub" style="margin-bottom:14px">Загрузи скрин или PDF билета — мы проверим подлинность и подтвердим участие.</div>
+      <div class="ref-sub" style="margin-bottom:14px">Загрузи скрин или PDF билета — подтвердим участие.</div>
       <label class="btn btn-ghost" style="width:100%">${I.image(16,'var(--text-1)')} Выбрать файл<input type="file" accept="image/*,application/pdf" style="display:none" onchange="pickProof(this,${id})"></label>
       <div id="proof-prev" style="margin-top:12px"></div>
-      <div class="lock-note" style="margin-top:16px">${I.lock(15)}<span>🔒 Файл нужен только для подтверждения и <b>удаляется автоматически</b> после мероприятия. Личные данные не храним.</span></div>
     </div>`;
   $overlays.appendChild(sh);
 }
@@ -993,7 +1001,7 @@ async function renderProfile(){
       <div class="profile-top">
         ${avatarMe(66)}
         <div class="profile-id">
-          <div class="profile-name">${esc(ME.first_name||'ты')}</div>
+          <div class="profile-name">${esc(ME.first_name||'ты')}${qt.verified?' <span style="color:#3aa0ff;font-size:18px">✔︎</span>':''}</div>
           ${ME.username?`<span class="profile-handle">@${esc(ME.username)}</span>`:''}
         </div>
       </div>
@@ -1009,8 +1017,26 @@ async function renderProfile(){
       <button class="seg-opt${PSEG==='host'?' on':''}" onclick="PSEG='host';renderProfile()">Организую</button>
       <button class="seg-opt${PSEG==='going'?' on':''}" onclick="PSEG='going';renderProfile()">Я иду</button>
     </div>
-    ${PSEG==='host' ? (qtCard(qt.connected) + renderMine(mine)) : renderGoing(ts)}
+    ${PSEG==='host' ? (verifyCard(qt.verified) + qtCard(qt.connected) + renderMine(mine)) : renderGoing(ts)}
     <div style="height:24px"></div>`;
+}
+function verifyCard(verified){
+  if(verified) return `<div class="ref-card" style="margin:14px 16px 0;display:flex;align-items:center;gap:10px">
+    <span style="color:#3aa0ff;font-size:20px">✔︎</span>
+    <div><div class="ref-title">Проверенный организатор</div>
+    <div class="ref-sub">Твои события публикуются без модерации.</div></div></div>`;
+  return `<div class="ref-card" style="margin:14px 16px 0">
+    <div class="ref-title">Стать проверенным организатором</div>
+    <div class="ref-sub">Галочка доверия: события публикуются сразу, гости видят, что тебе можно доверять. Модератор проверит твой профиль.</div>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="requestVerify(this)">Подать заявку</button></div>`;
+}
+async function requestVerify(btn){
+  if(btn){ btn.disabled=true; btn.textContent='Отправляю…'; }
+  try{ const r=await api('/api/request_verify',{method:'POST',body:'{}'});
+    haptic(); toast(r.already?'Ты уже проверен ✓':'Заявка отправлена модератору ✓');
+    if(btn) btn.textContent='Заявка отправлена'; }
+  catch(e){ toast(e.message,false); if(btn){ btn.disabled=false; btn.textContent='Подать заявку'; } }
 }
 function qtCard(connected){
   return `<div class="ref-card" style="margin:14px 16px 0">

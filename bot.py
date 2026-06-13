@@ -154,20 +154,7 @@ async def cmd_help(message: Message) -> None:
 async def cmd_support(message: Message) -> None:
     await message.answer(
         "<b>Поддержка</b> 💬\n\n"
-        f"Нашёл баг или есть вопрос — пиши {config.SUPPORT_CONTACT}.\n"
-        "За ботом стоит реальный человек, а не безликий алгоритм — поможем разобраться.",
-    )
-
-
-@router.message(Command("security"))
-async def cmd_security(message: Message) -> None:
-    await message.answer(
-        "<b>Безопасность и приватность</b> 🔒\n\n"
-        "• Скрин/PDF билета нужен только чтобы организатор подтвердил, что ты идёшь.\n"
-        "• Файл <b>автоматически удаляется</b> после мероприятия (и сразу после подтверждения) — мы не храним чужие билеты.\n"
-        "• Лишних личных данных не собираем и третьим лицам не передаём.\n"
-        "• События проверяются модерацией, у проверенных организаторов — галочка ✔︎.\n\n"
-        f"Вопросы по безопасности — {config.SUPPORT_CONTACT}",
+        f"Есть вопрос или нашёл баг — пиши {config.SUPPORT_CONTACT}.",
     )
 
 
@@ -258,6 +245,34 @@ async def on_ticket_decision(call, bot: Bot) -> None:
 
 # ---------- админ: верификация организатора (этап 1/5) ----------
 
+@router.callback_query(lambda c: c.data and c.data.startswith(("vrf_ok_", "vrf_no_")))
+async def on_verify_request(call, bot: Bot) -> None:
+    if call.from_user.id not in config.ADMIN_IDS:
+        await call.answer("Только для модераторов", show_alert=True)
+        return
+    approve = call.data.startswith("vrf_ok_")
+    try:
+        uid = int(call.data.split("_")[-1])
+    except ValueError:
+        await call.answer("Битый id")
+        return
+    if approve:
+        db.upsert_user(uid, None, None)
+        db.set_verified(uid, True)
+        try:
+            await bot.send_message(uid, "✅ Тебе выдали галочку проверенного организатора! Твои события теперь публикуются сразу.")
+        except Exception:
+            pass
+        mark = "✅ Галочка выдана"
+    else:
+        mark = "🚫 Отказано"
+    try:
+        await call.message.edit_text(f"{call.message.text}\n\n<b>{mark}</b>")
+    except Exception:
+        pass
+    await call.answer(mark)
+
+
 @router.message(Command("verify"))
 async def cmd_verify(message: Message) -> None:
     if message.from_user.id not in config.ADMIN_IDS:
@@ -337,7 +352,6 @@ async def main() -> None:
         BotCommand(command="start", description="🎉 Открыть AFTERS"),
         BotCommand(command="app", description="🎟 Все вечеринки города"),
         BotCommand(command="help", description="ℹ️ Как это работает"),
-        BotCommand(command="security", description="🔒 Безопасность и приватность"),
         BotCommand(command="support", description="💬 Поддержка"),
     ])
 

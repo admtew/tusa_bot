@@ -354,7 +354,37 @@ async def h_cover(request: web.Request):
 async def h_qtickets_status(request: web.Request):
     me = request["user"]["id"]
     u = db.get_user(me)
-    return web.json_response({"connected": bool(u and u["qtickets_token"])})
+    return web.json_response({
+        "connected": bool(u and u["qtickets_token"]),
+        "verified": bool(u and u["is_verified"]),
+    })
+
+
+async def h_request_verify(request: web.Request):
+    """Заявка организатора на галочку доверия → модераторам."""
+    me = request["user"]["id"]
+    u = db.get_user(me)
+    if u and u["is_verified"]:
+        return web.json_response({"ok": True, "already": True})
+    if not config.ADMIN_IDS:
+        return web.json_response({"error": "Модерация не настроена"}, status=400)
+    name = request["user"].get("first_name", "Организатор")
+    uname = request["user"].get("username")
+    n_events = len(db.org_events(me))
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Выдать галочку", callback_data=f"vrf_ok_{me}"),
+        InlineKeyboardButton(text="🚫 Отказать", callback_data=f"vrf_no_{me}"),
+    ]])
+    txt = (f"🛡 <b>Заявка на проверенного организатора</b>\n"
+           f"{name}" + (f" @{uname}" if uname else "") + f" (id {me})\n"
+           f"Событий создано: {n_events}")
+    for admin in config.ADMIN_IDS:
+        try:
+            await request.app["bot"].send_message(admin, txt, reply_markup=kb)
+        except Exception:
+            pass
+    return web.json_response({"ok": True})
 
 
 async def h_qtickets_connect(request: web.Request):
@@ -697,5 +727,6 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/qtickets/connect", h_qtickets_connect),
         web.post("/api/qtickets/preview", h_qtickets_preview),
         web.post("/api/qtickets/import", h_qtickets_import),
+        web.post("/api/request_verify", h_request_verify),
     ])
     return app
