@@ -480,7 +480,10 @@ function renderTabbar(){
       ${t.mid?'':`<span class="tab-lab">${t.label}</span>`}
     </button>`).join('');
 }
-function go(tab){ TAB = tab; renderTabbar(); animateTab(tab); $screen.scrollTop = 0; render(); }
+function go(tab){
+  if(EDIT_ID){ EDIT_ID=null; FORM=blankForm(); }   // навигация по табам сбрасывает режим правки
+  TAB = tab; renderTabbar(); animateTab(tab); $screen.scrollTop = 0; render();
+}
 function animateTab(tab){
   const idx = TABS.findIndex(function(t){ return t.id===tab; });
   const el = document.querySelectorAll('#tabbar .tab')[idx];
@@ -889,6 +892,25 @@ function blankForm(){
     city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва' };
 }
 let FORM = blankForm();
+let EDIT_ID = null;   // если задан — режим редактирования
+async function editEvent(id){
+  let e;
+  try{ e = await api('/api/events/'+id); }catch(err){ toast(err.message,false); return; }
+  const d = new Date(e.starts_at*1000);
+  const pad = n => String(n).padStart(2,'0');
+  const priceNum = (e.price_text||'').replace(/\D/g,'');
+  FORM = {
+    title:e.title||'', description:e.description||'',
+    date:`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,
+    time:`${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    endtime: e.ends_at?(function(){const x=new Date(e.ends_at*1000);return `${pad(x.getHours())}:${pad(x.getMinutes())}`;})():'',
+    area:e.area||'', address:e.address||'', capacity:e.capacity||0, age_limit:e.age_limit||'18+',
+    price_num:priceNum, pay_url:e.pay_url||'', refs_needed:e.refs_needed||0, channel:e.channel||'',
+    genre:e.genre||'', cover:e.cover||'violet', cover_data:'', photos_data:[], city:e.city||'Москва',
+  };
+  EDIT_ID = id;
+  TAB='create'; renderTabbar(); $screen.scrollTop=0; renderCreate();
+}
 function renderCreate(){
   const _sc = $screen.scrollTop;                 // сохраняем прокрутку, чтобы не прыгало наверх
   requestAnimationFrame(function(){ $screen.scrollTop = _sc; });
@@ -897,8 +919,8 @@ function renderCreate(){
   const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
   $screen.innerHTML = `
   <div class="create">
-    <div class="screen-head tight"><h1 class="h-title">Создать</h1>
-      <p class="h-sub">Оформи party как дроп — пару минут и готово</p></div>
+    <div class="screen-head tight"><h1 class="h-title">${EDIT_ID?'Изменить':'Создать'}</h1>
+      <p class="h-sub">${EDIT_ID?'Поправь детали и сохрани':'Оформи party как дроп — пару минут и готово'}</p></div>
 
     <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или градиент</span></div>
       <div class="cover-preview ${F.cover_data?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
@@ -973,9 +995,11 @@ function renderCreate(){
     <div class="field"><div class="field-lab"><span class="mono">ГОРОД</span></div>
       <div class="seg" style="flex-wrap:wrap">${CITIES.map(c=>`<button class="seg-opt${F.city===c.name?' on':''}" style="flex:0 0 auto;padding:9px 13px" onclick="FORM.city='${c.name}';renderCreate()">${c.name}</button>`).join('')}</div></div>
 
-    <div class="create-cta"><button class="btn btn-primary cta-go" onclick="confirmPublish()">Опубликовать party ${I.arrow()}</button></div>
+    <div class="create-cta"><button class="btn btn-primary cta-go" onclick="confirmPublish()">${EDIT_ID?'Сохранить':'Опубликовать party'} ${I.arrow()}</button></div>
+    ${EDIT_ID?`<div style="padding:0 18px 16px"><button class="btn btn-ghost" style="width:100%" onclick="cancelEdit()">Отмена</button></div>`:''}
   </div>`;
 }
+function cancelEdit(){ EDIT_ID=null; FORM=blankForm(); go('profile'); }
 function setCover(k){ FORM.cover=k; FORM.cover_data=''; renderCreate(); }
 function stepCap(d){ FORM.capacity=Math.max(0,(FORM.capacity||0)+d); document.getElementById('f-cap').value=FORM.capacity; }
 function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); document.getElementById('f-refs').value=FORM.refs_needed; }
@@ -1021,6 +1045,7 @@ function confirmPublish(){
   const F = FORM;
   if(!F.title.trim()){ toast('Дай party название',false); return; }
   if(!F.date || !F.time){ toast('Укажи дату и время',false); return; }
+  if(EDIT_ID){ publish(); return; }   // редактирование — без лишнего подтверждения
   if(tg.showConfirm){
     tg.showConfirm('Опубликовать party? Она появится в афише после модерации.', function(ok){ if(ok) publish(); });
   } else if(confirm('Опубликовать party?')){ publish(); }
@@ -1032,14 +1057,23 @@ async function publish(){
   let ends = 0;
   if(F.endtime){ ends = Math.floor(new Date(F.date+'T'+F.endtime).getTime()/1000); if(ends<=starts) ends+=86400; }
   const priceText = F.price_num ? (Number(F.price_num).toLocaleString('ru-RU')+' ₽') : '';
+  const payload = {
+    title:F.title.trim(), description:F.description, starts_at:starts, ends_at:ends,
+    area:F.area, address:F.address, capacity:F.capacity, age_limit:F.age_limit,
+    price_text:priceText, pay_url:F.pay_url, refs_needed:F.refs_needed,
+    channel:F.channel, genre:F.genre, cover:F.cover, city:F.city||'Москва',
+  };
+  if(F.cover_data) payload.cover_data = F.cover_data;   // обложку шлём только если поменяли
   try{
-    const r = await api('/api/events',{method:'POST',body:JSON.stringify({
-      title:F.title.trim(), description:F.description, starts_at:starts, ends_at:ends,
-      area:F.area, address:F.address, capacity:F.capacity, age_limit:F.age_limit,
-      price_text:priceText, pay_url:F.pay_url, refs_needed:F.refs_needed,
-      channel:F.channel, genre:F.genre, cover:F.cover, cover_data:F.cover_data,
-      photos_data:F.photos_data, city:F.city||'Москва',
-    })});
+    if(EDIT_ID){
+      const r = await api('/api/events/'+EDIT_ID+'/edit',{method:'POST',body:JSON.stringify(payload)});
+      haptic(); const id=EDIT_ID; EDIT_ID=null; FORM=blankForm();
+      toast(r.status==='pending' ? 'Изменения на модерации ✓' : 'Изменения сохранены ✓');
+      go('feed'); setTimeout(function(){ openDetail(id); }, 350);
+      return;
+    }
+    payload.photos_data = F.photos_data;
+    const r = await api('/api/events',{method:'POST',body:JSON.stringify(payload)});
     haptic();
     toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
     FORM = blankForm();
@@ -1142,6 +1176,7 @@ function renderMine(mine){
         <div class="mycard-stat"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
           <span class="mycard-num">${p.taken}${p.capacity?'/'+p.capacity:''}</span></div>
         <div class="mycard-actions">
+          <button class="btn btn-ghost sm" onclick="editEvent(${p.id})">Изменить</button>
           <button class="btn btn-ghost sm" onclick="openGuests(${p.id})">Гости</button>
           <button class="btn btn-ghost sm" onclick="openScanner(${p.id})">Сканер</button>
           ${live?`<button class="btn btn-ghost sm" onclick="shareEventById(${p.id},'${esc(p.title)}')">${I.share(15,'var(--text-2)')}</button>`:''}

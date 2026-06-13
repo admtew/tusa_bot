@@ -385,6 +385,41 @@ def set_event_status(event_id: int, status: str) -> None:
     c.commit()
 
 
+# редактируемые поля (всё, кроме служебных)
+EDITABLE = ("title", "description", "area", "address", "price_text", "pay_url",
+            "capacity", "refs_needed", "channel", "age_limit", "cover", "city",
+            "genre", "starts_at", "ends_at")
+
+
+def update_event(event_id: int, org_id: int, data: dict, status: str,
+                 cover_img: bytes | None = None, set_cover: bool = False) -> bool:
+    """Полное редактирование события владельцем. status — новый статус (pending при модерации)."""
+    e = conn().execute("SELECT * FROM events WHERE id=? AND org_id=?",
+                       (event_id, org_id)).fetchone()
+    if not e:
+        return False
+    sets, args = [], []
+    for f in EDITABLE:
+        if f in data:
+            val = data[f]
+            if f in ("capacity", "refs_needed", "starts_at", "ends_at"):
+                val = int(val or 0)
+            elif f == "channel":
+                val = str(val or "").lstrip("@")
+            sets.append(f"{f}=?")
+            args.append(val)
+    sets.append("status=?"); args.append(status)
+    if set_cover:
+        sets.append("cover_img=?"); args.append(cover_img)
+    args += [event_id, org_id]
+    c = conn()
+    cur = c.execute(f"UPDATE events SET {', '.join(sets)} WHERE id=? AND org_id=?", args)
+    c.commit()
+    if cur.rowcount > 0:
+        log_action(event_id, org_id, "edit", data.get("title", e["title"]))
+    return cur.rowcount > 0
+
+
 def delete_event(event_id: int, org_id: int) -> bool:
     """Мягкое удаление (отмена): только владелец. История сохраняется."""
     c = conn()

@@ -233,6 +233,38 @@ async def h_create_event(request: web.Request):
     return web.json_response({"id": event_id, "status": status})
 
 
+async def h_edit_event(request: web.Request):
+    """Редактирование события владельцем. После правок снова идёт на модерацию (если включена)."""
+    me = request["user"]["id"]
+    eid = int(request.match_info["id"])
+    e = db.get_event(eid)
+    if not e or e["org_id"] != me:
+        return web.json_response({"error": "Это не твоё событие"}, status=403)
+    body = await request.json()
+    if "title" in body and not str(body["title"]).strip():
+        return web.json_response({"error": "Название не может быть пустым"}, status=400)
+    if "title" in body and len(body["title"]) > 80:
+        return web.json_response({"error": "слишком длинное название"}, status=400)
+    if body.get("starts_at") and int(body["starts_at"]) <= time.time():
+        return web.json_response({"error": "Дата должна быть в будущем"}, status=400)
+    # привязка qtickets, если поменяли ссылку
+    if "pay_url" in body:
+        body["qt_event_id"] = qtickets.parse_event_id(body.get("pay_url", ""))
+    # обложка: меняем только если прислали новую (set_cover) или явно сбросили
+    set_cover = "cover_data" in body
+    cover_img = _decode_cover(body.get("cover_data", "")) if body.get("cover_data") else None
+    moderate = _moderation_on() and not db.is_verified(me)
+    status = "pending" if moderate else "active"
+    ok = db.update_event(eid, me, body, status, cover_img=cover_img, set_cover=set_cover)
+    if not ok:
+        return web.json_response({"error": "Не получилось обновить"}, status=400)
+    if status == "pending":
+        org = request["user"].get("username") or request["user"].get("first_name") or str(me)
+        await _notify_admins_new(request.app["bot"], eid, e["title"], org,
+                                 warn="✏️ Изменённое событие — перепроверь")
+    return web.json_response({"ok": True, "status": status})
+
+
 async def h_delete_event(request: web.Request):
     me = request["user"]["id"]
     eid = int(request.match_info["id"])
@@ -815,6 +847,7 @@ def make_web_app(bot) -> web.Application:
         web.get("/cover/{id}", h_cover),
         web.get("/photo/{id}/{idx}", h_photo),
         web.get("/api/events", h_events),
+        web.post("/api/events/{id}/edit", h_edit_event),
         web.post("/api/events/{id}/delete", h_delete_event),
         web.post("/api/events/{id}/reschedule", h_reschedule_event),
         web.post("/api/events/{id}/broadcast", h_broadcast),
