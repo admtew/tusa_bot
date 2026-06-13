@@ -615,7 +615,7 @@ async function openDetail(id){
   // организатору не показываем «я купил / получить билет» и реф-блок на своём событии
   const paidExtra = (!e.is_mine && !hasTicket && !e.sold_out && e.pay_url)
     ? `<div style="padding:10px 18px 14px"><button class="btn btn-ghost" style="width:100%" onclick="claimPaid(${e.id})">Я уже купил билет — отметить</button>
-       <div class="field-hint" style="text-align:center;margin-top:8px">организатор подтвердит, и QR появится в «Билетах»</div></div>` : '<div style="height:14px"></div>';
+       <div class="field-hint" style="text-align:center;margin-top:8px">отметив билет, ты будешь получать уведомления о событии (адрес, напоминания)</div></div>` : '<div style="height:14px"></div>';
 
   ov.innerHTML = `<div class="detail">
     <div class="detail-hero ${covClass(e)}" ${coverStyle(e)}>
@@ -644,10 +644,10 @@ async function openDetail(id){
         <div class="date-cell">${I.clock()}<div><span class="ds-big">${timeRange(e)}</span><span class="ds-small">${e.ends_at?'начало — конец':'начало'}</span></div></div>
       </div>
       ${e.status==='past'?`<div class="status-line past">Событие прошло</div>`:e.status==='cancelled'?`<div class="status-line bad">Событие отменено</div>`:''}
-      <div class="host-row">
+      <div class="host-row" onclick="openOrgProfile(${e.org_id})" style="cursor:pointer">
         ${avatar(e.host,36)}
-        <div class="host-meta"><div class="host-name">@${esc(e.host)}${e.host_verified?' <span style="color:#3aa0ff">✔︎</span>':''}</div><div class="host-role">${e.host_verified?'проверенный организатор':'организатор'}</div></div>
-        ${e.is_mine?`<button class="btn btn-ghost sm" onclick="openGuests(${e.id})">Гости</button>`:''}
+        <div class="host-meta"><div class="host-name">@${esc(e.host)}${e.host_verified?' <span style="color:#3aa0ff">✔︎</span>':''}</div><div class="host-role">${e.host_verified?'проверенный организатор':'организатор'} · смотреть профиль</div></div>
+        ${e.is_mine?`<button class="btn btn-ghost sm" onclick="event.stopPropagation();openGuests(${e.id})">Гости</button>`:''}
       </div>
       ${e.description?`<p class="detail-desc">${esc(e.description)}</p>`:''}
       <div class="spec-card">
@@ -676,6 +676,72 @@ async function openDetail(id){
   initCarousel();
 }
 function closeDetail(){ const d=document.getElementById('detail-ov'); if(d) d.remove(); }
+
+/* ───────── профиль организатора (в т.ч. режим модератора) ───────── */
+async function openOrgProfile(id){
+  const ov=document.createElement('div'); ov.className='overlay'; ov.id='org-ov';
+  ov.innerHTML='<div style="padding:18px">'+skeleton('one')+'</div>';
+  $overlays.appendChild(ov);
+  let o;
+  try{ o=await api('/api/org/'+id); }catch(e){ ov.remove(); toast(e.message,false); return; }
+  const since=new Date((o.since||0)*1000);
+  const statusBadge=s=>s==='active'?'<span class="status-badge" style="background:rgba(46,204,113,.15);color:#2ecc71">в афише</span>'
+    :s==='pending'?'<span class="status-badge wait">на модерации</span>'
+    :s==='rejected'?'<span class="status-badge bad">отклонено</span>'
+    :s==='cancelled'?'<span class="status-badge bad">отменено</span>'
+    :s==='past'?'<span class="status-badge" style="background:var(--surface-2);color:var(--text-2)">прошло</span>':'';
+  ov.innerHTML=`<div class="detail" style="overflow-y:auto">
+    <div class="detail-topbar" style="position:sticky;top:0;background:var(--bg);z-index:5">
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="document.getElementById('org-ov').remove()">${I.back(20,'var(--text-1)')}</button>
+      ${o.is_admin_view?'<span class="status-badge wait" style="align-self:center">режим модератора</span>':'<span></span>'}
+    </div>
+    <div style="padding:8px 18px 0">
+      <div class="profile-top">
+        ${avatar(o.name,60,true)}
+        <div class="profile-id">
+          <div class="profile-name" style="font-size:24px">${esc(o.name)}${o.verified?' <span style="color:#3aa0ff;font-size:17px">✔︎</span>':''}</div>
+          ${o.username?`<span class="profile-handle">@${esc(o.username)}</span>`:''}
+        </div>
+      </div>
+      <div class="profile-stats" style="margin-top:16px">
+        <div class="pstat"><div class="pstat-n">${o.events_count}</div><span class="pstat-l">событий</span></div>
+        <span class="pstat-div"></span>
+        <div class="pstat"><div class="pstat-n">${o.followers}</div><span class="pstat-l">подписчиков</span></div>
+        <span class="pstat-div"></span>
+        <div class="pstat"><div class="pstat-n">${o.total_guests}</div><span class="pstat-l">гостей</span></div>
+        ${o.is_admin_view?`<span class="pstat-div"></span><div class="pstat"><div class="pstat-n" style="${o.total_reports>0?'color:#e74c3c':''}">${o.total_reports||0}</div><span class="pstat-l">жалоб</span></div>`:''}
+      </div>
+      ${!o.is_self?`<button class="btn ${o.following?'btn-ghost':'btn-primary'}" style="width:100%;margin-top:14px" id="follow-btn" onclick="toggleFollow(${o.id},${o.following})">${o.following?'Вы подписаны ✓':'Подписаться на организатора'}</button>
+        <div class="field-hint" style="text-align:center;margin-top:6px">${o.following?'будешь получать новые события первым':'получай уведомления о новых событиях'}</div>`:''}
+      ${o.is_admin_view?`<button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="adminSetVerify(${o.id},${!o.verified})">${o.verified?'Снять галочку доверия':'Выдать галочку доверия'}</button>`:''}
+      ${o.is_admin_view?`<div class="ref-sub" style="margin-top:12px">На AFTERS с ${since.toLocaleDateString('ru-RU')} · qtickets: ${o.qtickets?'подключён':'нет'} · статус: ${o.verified?'проверенный':'не проверен'}</div>`:''}
+    </div>
+    <div class="my-list" style="padding-top:14px">
+      ${o.events.length?o.events.map(function(e){
+        const f=fmt(e.starts_at);
+        return `<div class="mycard" onclick="document.getElementById('org-ov').remove();openDetail(${e.id})" style="cursor:pointer">
+          <div class="mycard-cover ${covClass(e)}" ${coverStyle(e)}><div class="mycard-cover-mark">${e.has_cover?'':firstWord(e.title)}</div></div>
+          <div class="mycard-body">
+            <div class="mycard-date">${f.dow} ${f.date} · ${esc(e.city)} ${statusBadge(e.status)}${(o.is_admin_view&&e.reports>0)?' <span class="status-badge bad">🚩'+e.reports+'</span>':''}</div>
+            <div class="mycard-title">${esc(e.title)}</div>
+            <div class="mycard-stat"><span class="mycard-num">${e.taken} гостей · ${e.price_text||(e.pay_url?'платно':'free')}</span></div>
+          </div></div>`;
+      }).join(''):'<div class="empty-sub" style="text-align:center;margin:30px auto">У организатора пока нет событий.</div>'}
+    </div>
+    <div style="height:30px"></div>
+  </div>`;
+}
+async function toggleFollow(id, currently){
+  const btn=document.getElementById('follow-btn'); if(btn) btn.disabled=true;
+  try{ const r=await api('/api/org/'+id+'/follow',{method:'POST',body:JSON.stringify({follow:!currently})});
+    haptic(); toast(r.following?'Подписка оформлена ✓':'Отписка'); openOrgProfile(id); }
+  catch(e){ toast(e.message,false); if(btn) btn.disabled=false; }
+}
+async function adminSetVerify(id, set){
+  try{ await api('/api/org/'+id+'/verify',{method:'POST',body:JSON.stringify({set:set})});
+    haptic(); toast(set?'Галочка выдана':'Галочка снята'); openOrgProfile(id); }
+  catch(e){ toast(e.message,false); }
+}
 async function reportEvent(id){
   const send=function(reason){ api('/api/events/'+id+'/report',{method:'POST',body:JSON.stringify({reason:reason||''})})
     .then(function(){ haptic(); toast('Жалоба отправлена, спасибо'); }).catch(function(e){ toast(e.message,false); }); };
@@ -1342,6 +1408,12 @@ function boot(){
     if(!CITY){ CITY = ALL_CITIES; try{ localStorage.setItem('tusa_city', CITY); }catch(e){} }
     document.getElementById('city-name').textContent = cityLabel();
     go('feed'); openDetail(parseInt(h.slice(6))||0); return;
+  }
+  // модератор открыл профиль организатора
+  if(h.indexOf('org/')===0){
+    if(!CITY){ CITY = ALL_CITIES; try{ localStorage.setItem('tusa_city', CITY); }catch(e){} }
+    document.getElementById('city-name').textContent = cityLabel();
+    go('feed'); openOrgProfile(parseInt(h.slice(4))||0); return;
   }
   if(CITY) document.getElementById('city-name').textContent = cityLabel();
   else openCityPicker();

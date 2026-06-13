@@ -104,6 +104,14 @@ def init() -> None:
             created_at INTEGER NOT NULL,
             UNIQUE(event_id, user_id)
         );
+
+        -- подписки на организаторов (уведомления о новых событиях)
+        CREATE TABLE IF NOT EXISTS follows (
+            org_id     INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (org_id, user_id)
+        );
         """
     )
     # мягкие миграции для старых баз (идемпотентны)
@@ -134,6 +142,7 @@ def init() -> None:
         "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_log_event ON event_log(event_id)",
         "CREATE INDEX IF NOT EXISTS idx_photos_event ON event_photos(event_id, idx)",
+        "CREATE INDEX IF NOT EXISTS idx_follows_org ON follows(org_id)",
     ):
         try:
             c.execute(idx)
@@ -317,6 +326,44 @@ def add_report(event_id: int, user_id: int, reason: str) -> bool:
 def report_count(event_id: int) -> int:
     return conn().execute(
         "SELECT COUNT(*) FROM reports WHERE event_id=?", (event_id,)
+    ).fetchone()[0]
+
+
+# ---------- подписки на организаторов ----------
+
+def follow(org_id: int, user_id: int) -> bool:
+    if org_id == user_id:
+        return False
+    c = conn()
+    try:
+        c.execute("INSERT INTO follows(org_id,user_id,created_at) VALUES(?,?,?)",
+                  (org_id, user_id, now()))
+        c.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def unfollow(org_id: int, user_id: int) -> None:
+    c = conn()
+    c.execute("DELETE FROM follows WHERE org_id=? AND user_id=?", (org_id, user_id))
+    c.commit()
+
+
+def is_following(org_id: int, user_id: int) -> bool:
+    return conn().execute(
+        "SELECT 1 FROM follows WHERE org_id=? AND user_id=?", (org_id, user_id)
+    ).fetchone() is not None
+
+
+def follower_ids(org_id: int) -> list[int]:
+    rows = conn().execute("SELECT user_id FROM follows WHERE org_id=?", (org_id,)).fetchall()
+    return [r[0] for r in rows]
+
+
+def follower_count(org_id: int) -> int:
+    return conn().execute(
+        "SELECT COUNT(*) FROM follows WHERE org_id=?", (org_id,)
     ).fetchone()[0]
 
 

@@ -180,7 +180,13 @@ async def on_moderation(call, bot: Bot) -> None:
     if not event:
         await call.answer("Событие не найдено")
         return
+    if event["status"] != "pending":  # уже обработал другой модератор
+        await call.answer("Уже обработано другим модератором", show_alert=True)
+        return
     db.set_event_status(event_id, "active" if approve else "rejected")
+    if approve:
+        from api import notify_followers
+        await notify_followers(bot, db.get_event(event_id))
     # уведомляем организатора
     try:
         if approve:
@@ -217,6 +223,9 @@ async def on_ticket_decision(call, bot: Bot) -> None:
         return
     if t["org_id"] != call.from_user.id:
         await call.answer("Это не твоё событие", show_alert=True)
+        return
+    if t["kind"] != "paid_pending":  # уже обработано
+        await call.answer("Заявка уже обработана", show_alert=True)
         return
     if approve:
         db.approve_ticket(code)
@@ -255,6 +264,9 @@ async def on_verify_request(call, bot: Bot) -> None:
         uid = int(call.data.split("_")[-1])
     except ValueError:
         await call.answer("Битый id")
+        return
+    if db.is_verified(uid):  # другой модератор уже выдал
+        await call.answer("Уже выдано другим модератором", show_alert=True)
         return
     if approve:
         db.upsert_user(uid, None, None)
@@ -305,33 +317,34 @@ async def cmd_unverify(message: Message) -> None:
 # ---------- напоминания ----------
 
 async def send_reminders(bot: Bot) -> None:
-    # за сутки: анонс
-    for t in db.tickets_for_reminder(24, "rem24_sent"):
-        when = dt.datetime.fromtimestamp(t["starts_at"]).strftime("%d.%m в %H:%M")
-        try:
-            await bot.send_message(
-                t["user_id"],
-                f"<b>Завтра party!</b> 🎉\n<b>{t['title']}</b>\n{when}, {t['area']}\n\n"
-                "Билет — в приложении, вкладка «Билеты».",
-                reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
-            )
-        except Exception as e:
-            log.warning("reminder24 to %s failed: %s", t["user_id"], e)
-        db.mark_reminded(t["code"], "rem24_sent")
-
-    # незадолго до начала: точный адрес
-    for t in db.tickets_for_reminder(config.ADDRESS_REVEAL_HOURS, "rem3_sent"):
+    # за 5 часов: напоминание с адресом (rem24_sent переиспользуем как «5ч отправлено»)
+    for t in db.tickets_for_reminder(5, "rem24_sent"):
         when = dt.datetime.fromtimestamp(t["starts_at"]).strftime("%H:%M")
         addr = t["address"] or t["area"]
         try:
             await bot.send_message(
                 t["user_id"],
-                f"Сегодня! <b>{t['title']}</b> в {when} 🔥\n"
-                f"📍 Адрес: {addr}\n\nПокажи QR-билет на входе. До встречи!",
+                f"<b>Сегодня — {t['title']}</b> в {when} 🎉\n"
+                f"📍 Адрес: {addr}\n\nБилет — во вкладке «Билеты». До встречи!",
                 reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
             )
         except Exception as e:
-            log.warning("reminder3 to %s failed: %s", t["user_id"], e)
+            log.warning("reminder5 to %s failed: %s", t["user_id"], e)
+        db.mark_reminded(t["code"], "rem24_sent")
+
+    # за 2 часа: финальное напоминание с адресом (rem3_sent как «2ч отправлено»)
+    for t in db.tickets_for_reminder(2, "rem3_sent"):
+        when = dt.datetime.fromtimestamp(t["starts_at"]).strftime("%H:%M")
+        addr = t["address"] or t["area"]
+        try:
+            await bot.send_message(
+                t["user_id"],
+                f"Через пару часов начинаем! <b>{t['title']}</b> в {when} 🔥\n"
+                f"📍 {addr}\n\nПокажи QR-билет на входе.",
+                reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
+            )
+        except Exception as e:
+            log.warning("reminder2 to %s failed: %s", t["user_id"], e)
         db.mark_reminded(t["code"], "rem3_sent")
 
 

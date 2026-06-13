@@ -80,6 +80,7 @@ def event_json(e, me_id: int | None = None) -> dict:
         "taken": taken,
         "sold_out": bool(e["capacity"] and taken >= e["capacity"]),
         "is_mine": me_id == e["org_id"],
+        "org_id": e["org_id"],
         "status": e["status"],
         "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
         "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
@@ -157,11 +158,15 @@ async def _notify_admins_new(bot, event_id: int, title: str, org: str, warn: str
         text="👁 Открыть карточку",
         web_app=WebAppInfo(url=f"{config.WEBAPP_URL}#event/{event_id}"),
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [open_btn],
-        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"mod_ok_{event_id}"),
-         InlineKeyboardButton(text="🚫 Отклонить", callback_data=f"mod_no_{event_id}")],
-    ])
+    org_btn = InlineKeyboardButton(
+        text="👤 Профиль организатора",
+        web_app=WebAppInfo(url=f"{config.WEBAPP_URL}#org/{e['org_id']}")) if e else None
+    rows = [[open_btn]]
+    if org_btn:
+        rows.append([org_btn])
+    rows.append([InlineKeyboardButton(text="✅ Одобрить", callback_data=f"mod_ok_{event_id}"),
+                 InlineKeyboardButton(text="🚫 Отклонить", callback_data=f"mod_no_{event_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
     if e:
         when = datetime.datetime.fromtimestamp(e["starts_at"]).strftime("%d.%m.%Y %H:%M")
         price = e["price_text"] or ("ссылка qtickets" if e["pay_url"] else "free")
@@ -222,6 +227,9 @@ async def h_create_event(request: web.Request):
         org = request["user"].get("username") or request["user"].get("first_name") or str(me)
         note = "⚠️ ВОЗМОЖНЫЙ ДУБЛЬ чужого события!" if dup else None
         await _notify_admins_new(request.app["bot"], event_id, body["title"], org, warn=note)
+    else:
+        # сразу опубликовано — уведомляем подписчиков в фоне (не тормозим ответ)
+        asyncio.create_task(notify_followers(request.app["bot"], db.get_event(event_id)))
     return web.json_response({"id": event_id, "status": status})
 
 
@@ -233,10 +241,10 @@ async def h_delete_event(request: web.Request):
         return web.json_response({"error": "Не получилось — это не твоё событие"}, status=403)
     users = db.event_ticket_users(eid)
     db.delete_event(eid, me)
-    # этап 3: уведомить всех, кто шёл
+    # этап 3: уведомить всех, кто шёл (в фоне)
     if users:
-        await notify.broadcast(request.app["bot"], users,
-                               f"❌ Событие «{e['title']}» отменено организатором.")
+        asyncio.create_task(notify.broadcast(request.app["bot"], users,
+                            f"❌ Событие «{e['title']}» отменено организатором."))
     return web.json_response({"ok": True})
 
 
@@ -258,8 +266,8 @@ async def h_reschedule_event(request: web.Request):
     import datetime
     when = datetime.datetime.fromtimestamp(new_starts).strftime("%d.%m %H:%M")
     if users:
-        await notify.broadcast(request.app["bot"], users,
-                               f"🗓 Событие «{e['title']}» перенесено на {when}.")
+        asyncio.create_task(notify.broadcast(request.app["bot"], users,
+                            f"🗓 Событие «{e['title']}» перенесено на {when}."))
     if status == "pending":
         org = request["user"].get("username") or request["user"].get("first_name") or str(me)
         await _notify_admins_new(request.app["bot"], eid, e["title"] + " (перенос)", org)
@@ -305,6 +313,105 @@ async def h_report_event(request: web.Request):
         except Exception:
             pass
     return web.json_response({"ok": True})
+
+
+async def h_org_profile(request: web.Request):
+    """Профиль организатора. Модератор видит всё (любые статусы, жалобы); гость — только активные."""
+    me = request["user"]["id"]
+    org_id = int(request.match_info["id"])
+    org = db.get_user(org_id)
+    if not org:
+        return web.json_response({"error": "not_found"}, status=404)
+    is_admin = me in config.ADMIN_IDS
+    rows = db.org_events(org_id)
+    if not is_admin:
+        rows = [e for e in rows if e["status"] in ("active", "past")]
+    events, total_guests, total_reports = [], 0, 0
+    for e in rows:
+        taken = db.tickets_count(e["id"])
+        reports = db.report_count(e["id"])
+        total_guests += taken
+        total_reports += reports
+        item = {
+            "id": e["id"], "title": e["title"], "starts_at": e["starts_at"],
+            "city": e["city"], "cover": e["cover"], "has_cover": bool(e["cover_img"]),
+            "cover_ver": e["created_at"], "status": e["status"], "taken": taken,
+            "price_text": e["price_text"], "pay_url": e["pay_url"],
+        }
+        if is_admin:
+            item["reports"] = reports
+            item["area"] = e["area"]
+        events.append(item)
+    data = {
+        "id": org_id,
+        "name": org["first_name"] or "Организатор",
+        "username": org["username"],
+        "verified": bool(org["is_verified"]),
+        "since": org["created_at"],
+        "events_count": len(events),
+        "total_guests": total_guests,
+        "followers": db.follower_count(org_id),
+        "following": db.is_following(org_id, me),
+        "is_self": me == org_id,
+        "is_admin_view": is_admin,
+    }
+    if is_admin:
+        data["total_reports"] = total_reports
+        data["qtickets"] = bool(org["qtickets_token"])
+    data["events"] = events
+    return web.json_response(data)
+
+
+async def h_org_follow(request: web.Request):
+    """Подписка/отписка на организатора (уведомления о новых событиях)."""
+    me = request["user"]["id"]
+    org_id = int(request.match_info["id"])
+    body = await request.json()
+    if body.get("follow"):
+        db.follow(org_id, me)
+    else:
+        db.unfollow(org_id, me)
+    return web.json_response({"ok": True, "following": db.is_following(org_id, me)})
+
+
+async def h_org_set_verify(request: web.Request):
+    """Модератор выдаёт/снимает галочку доверия."""
+    me = request["user"]["id"]
+    if me not in config.ADMIN_IDS:
+        return web.json_response({"error": "forbidden"}, status=403)
+    org_id = int(request.match_info["id"])
+    body = await request.json()
+    want = bool(body.get("set"))
+    db.set_verified(org_id, want)
+    try:
+        if want:
+            await request.app["bot"].send_message(
+                org_id, "✅ Тебе выдали галочку проверенного организатора! События публикуются сразу.")
+        else:
+            await request.app["bot"].send_message(
+                org_id, "Галочка проверенного организатора снята. События снова проходят модерацию.")
+    except Exception:
+        pass
+    return web.json_response({"ok": True, "verified": want})
+
+
+async def notify_followers(bot, event) -> int:
+    """Уведомить подписчиков организатора о новом активном событии."""
+    if not event or event["status"] != "active":
+        return 0
+    ids = db.follower_ids(event["org_id"])
+    if not ids:
+        return 0
+    import datetime
+    when = datetime.datetime.fromtimestamp(event["starts_at"]).strftime("%d.%m в %H:%M")
+    org = db.get_user(event["org_id"])
+    name = (org["username"] or org["first_name"]) if org else "организатор"
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text="Открыть событие 🎉",
+        web_app=WebAppInfo(url=f"{config.WEBAPP_URL}#event/{event['id']}"))]])
+    txt = f"🔔 <b>{name}</b> публикует новое событие!\n<b>{event['title']}</b>\n{when} · {event['city']}"
+    return await notify.broadcast(bot, ids, txt, reply_markup=kb)
 
 
 async def h_org_log(request: web.Request):
@@ -371,11 +478,13 @@ async def h_request_verify(request: web.Request):
     name = request["user"].get("first_name", "Организатор")
     uname = request["user"].get("username")
     n_events = len(db.org_events(me))
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Выдать галочку", callback_data=f"vrf_ok_{me}"),
-        InlineKeyboardButton(text="🚫 Отказать", callback_data=f"vrf_no_{me}"),
-    ]])
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👁 Профиль организатора",
+                              web_app=WebAppInfo(url=f"{config.WEBAPP_URL}#org/{me}"))],
+        [InlineKeyboardButton(text="✅ Выдать галочку", callback_data=f"vrf_ok_{me}"),
+         InlineKeyboardButton(text="🚫 Отказать", callback_data=f"vrf_no_{me}")],
+    ])
     txt = (f"🛡 <b>Заявка на проверенного организатора</b>\n"
            f"{name}" + (f" @{uname}" if uname else "") + f" (id {me})\n"
            f"Событий создано: {n_events}")
@@ -721,6 +830,9 @@ def make_web_app(bot) -> web.Application:
         web.get("/api/me/events", h_my_events),
         web.get("/api/me/history", h_my_history),
         web.get("/api/me/log", h_org_log),
+        web.get("/api/org/{id}", h_org_profile),
+        web.post("/api/org/{id}/follow", h_org_follow),
+        web.post("/api/org/{id}/verify", h_org_set_verify),
         web.post("/api/approve", h_approve),
         web.post("/api/scan", h_scan),
         web.get("/api/qtickets/status", h_qtickets_status),

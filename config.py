@@ -23,8 +23,8 @@ DB_PATH: str = os.getenv("DB_PATH", _default_db)
 # и обязательной подписке на канал в момент выдачи билета.
 NEW_ID_THRESHOLD: int = int(os.getenv("NEW_ID_THRESHOLD", "0"))
 
-# За сколько часов до начала слать напоминание с адресом
-ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "3"))
+# За сколько часов до начала открывать адрес в приложении (напоминания шлются за 5ч и 2ч)
+ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "5"))
 
 # Контакт поддержки (показывается в /support). Поменяй на свой.
 SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@your_support")
