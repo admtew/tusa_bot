@@ -411,7 +411,7 @@ const I = {
 /* класс обложки: своё фото (cov-img, без зерна/плитки) или градиент */
 function covClass(e){ return (e && e.has_cover) ? 'cov-img' : covCls(e.cover); }
 function coverStyle(e){
-  return e && e.has_cover ? `style="background-image:url(/cover/${e.id})"` : '';
+  return e && e.has_cover ? `style="background-image:url(/cover/${e.id}?v=${e.cover_ver||0})"` : '';
 }
 function avatar(name, size, accent){
   const letter = (name||'?').replace(/[^a-zа-яё0-9]/i,'').charAt(0).toUpperCase() || '?';
@@ -620,7 +620,7 @@ async function openDetail(id){
       ${e.photos>0?`<div class="carousel" id="carousel">
         <div class="carousel-track" id="ctrack">
           <div class="carousel-slide ${covClass(e)}" ${coverStyle(e)}></div>
-          ${Array.from({length:e.photos}).map((_,i)=>`<div class="carousel-slide" style="background-image:url(/photo/${e.id}/${i})"></div>`).join('')}
+          ${Array.from({length:e.photos}).map((_,i)=>`<div class="carousel-slide" style="background-image:url(/photo/${e.id}/${i}?v=${e.cover_ver||0})"></div>`).join('')}
         </div>
         <div class="carousel-dots">${Array.from({length:e.photos+1}).map((_,i)=>`<span class="cdot${i===0?' on':''}"></span>`).join('')}</div>
       </div>`:''}

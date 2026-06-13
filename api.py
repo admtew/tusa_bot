@@ -83,6 +83,7 @@ def event_json(e, me_id: int | None = None) -> dict:
         "status": e["status"],
         "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
         "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
+        "cover_ver": e["created_at"],   # версия для обхода кэша картинок
         "photos": db.event_photo_count(e["id"]),
     }
     org = db.get_user(e["org_id"])
@@ -555,7 +556,19 @@ async def h_meta(request: web.Request):
 
 
 async def h_health(request: web.Request):
-    return web.json_response({"ok": True})
+    """Проверка живости + где лежит база и сколько в ней данных (для контроля Volume)."""
+    try:
+        c = db.conn()
+        events = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        tickets = c.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
+        users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        persistent = config.DB_PATH.startswith("/data")
+        return web.json_response({
+            "ok": True, "db_path": config.DB_PATH, "persistent_volume": persistent,
+            "events": events, "tickets": tickets, "users": users,
+        })
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
 async def h_index(request: web.Request):
