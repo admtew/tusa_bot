@@ -60,6 +60,7 @@ input,textarea,select{font-family:inherit;}
 
 /* screen */
 .screen-area{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;-webkit-overflow-scrolling:touch;}
+.screen-scroll{min-height:100%;}
 .screen-area::-webkit-scrollbar{width:0;}
 .screen-head{padding:22px 18px 6px;}
 .screen-head.tight{padding-bottom:12px;}
@@ -99,6 +100,20 @@ input,textarea,select{font-family:inherit;}
 .pcard-title{font-family:var(--display);font-weight:800;font-size:25px;letter-spacing:-0.8px;margin:7px 0 8px;line-height:1;}
 .pcard-sub{display:flex;gap:16px;}
 .loc{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-1);}
+
+/* feed: grid 2-up */
+.feed.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px 13px;}
+.gcard{display:block;text-align:left;width:100%;}
+.gcard-cover{position:relative;width:100%;aspect-ratio:3/4;border-radius:14px;overflow:hidden;margin-bottom:9px;box-shadow:0 14px 34px -20px rgba(0,0,0,0.9);}
+.gcard-mark{position:absolute;inset:0;display:flex;align-items:flex-end;padding:0 10px 9px;overflow:hidden;pointer-events:none;font-family:var(--display);font-weight:900;line-height:0.82;font-size:34px;letter-spacing:-1px;color:rgba(255,255,255,0.92);text-shadow:0 2px 30px rgba(0,0,0,0.35);word-break:break-word;}
+.gcard-top{position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:6px;}
+.pill-day{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:0.8px;padding:4px 7px;border-radius:6px;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);color:#fff;border:1px solid rgba(255,255,255,0.18);}
+.pill-price.small,.pill-live.small{font-size:9.5px;padding:4px 7px;}
+.pill-live.small{letter-spacing:0.8px;}
+.gcard-title{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:-0.4px;margin:0 0 4px;line-height:1.04;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.gcard-date{font-family:var(--mono);font-size:10px;letter-spacing:0.4px;color:var(--text-2);margin-bottom:3px;}
+.gcard-loc{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--text-2);}
+.feed.grid .pcard:nth-child(n){animation-delay:0s;}
 
 /* buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;border-radius:13px;transition:.16s;font-size:15px;white-space:nowrap;text-decoration:none;}
@@ -289,6 +304,31 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:90;display:inline-flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text-0);padding:12px 18px;border-radius:13px;font-size:13px;font-weight:500;box-shadow:0 20px 50px -16px rgba(0,0,0,0.8);animation:toastIn .3s cubic-bezier(.2,.9,.3,1.1);max-width:88vw;text-align:center;}
 @keyframes toastIn{from{transform:translate(-50%,16px);opacity:0;}to{transform:translate(-50%,0);opacity:1;}}
 .loading{padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:12px;letter-spacing:1px;}
+
+/* create wizard */
+.wiz-head{padding:18px 18px 6px;position:sticky;top:0;background:linear-gradient(180deg,var(--bg) 70%,transparent);z-index:5;}
+.wiz-steps{display:flex;gap:8px;margin-bottom:12px;}
+.wiz-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0.5;transition:.18s;background:none;}
+.wiz-step.on,.wiz-step.done{opacity:1;}
+.wiz-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);color:var(--text-2);}
+.wiz-step.on .wiz-dot{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 18px -6px var(--accent);}
+.wiz-step.done .wiz-dot{background:var(--surface-2);border-color:var(--accent);color:var(--accent);}
+.wiz-lab{font-family:var(--mono);font-size:10px;letter-spacing:0.3px;color:var(--text-2);}
+.wiz-step.on .wiz-lab{color:var(--text-0);}
+.wiz-bar{height:3px;border-radius:3px;background:var(--surface-2);overflow:hidden;}
+.wiz-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s cubic-bezier(.2,.8,.2,1);}
+.wiz-pane{padding-top:8px;animation:fadeUp .26s cubic-bezier(.2,.8,.2,1);}
+.wiz-cta{position:sticky;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,var(--bg) 26%);}
+.wiz-back{flex:0 0 auto;}
+.wiz-next{flex:1;}
+.wiz-next.disabled{opacity:0.4;box-shadow:none;}
+.recap{display:flex;gap:13px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 0 18px;}
+.recap-cover{width:60px;height:74px;flex-shrink:0;border-radius:11px;position:relative;overflow:hidden;}
+.recap-cover .cover-preview-mark{font-size:13px;left:7px;bottom:6px;}
+.recap-body{min-width:0;}
+.recap-title{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-0.4px;line-height:1.05;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.recap-meta{display:block;font-family:var(--mono);font-size:11px;color:var(--text-1);}
+.recap-meta.dim{color:var(--text-3);margin-top:2px;}
 
 /* boot splash */
 #splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 32%,#1a130f 0%,#0a0a0b 70%);animation:splashOut .5s ease 1.2s forwards;}
@@ -523,6 +563,7 @@ function renderTabbar(){
 }
 function go(tab){
   if(EDIT_ID){ EDIT_ID=null; FORM=blankForm(); }   // навигация по табам сбрасывает режим правки
+  if(tab==='create') CREATE_STEP=0;                 // визард всегда с первого шага
   TAB = tab; renderTabbar(); animateTab(tab); $screen.scrollTop = 0; render();
 }
 function animateTab(tab){
@@ -579,7 +620,7 @@ async function renderFeed(){
         ${['все','free','платные','18+'].map(c=>`<button class="chip${FILTER.type===c?' chip-on':''}" onclick="setTypeFilter('${c}')">${c}</button>`).join('')}
       </div>
     </div>
-    ${list.length ? `<div class="feed">${list.map(cardEditorial).join('')}</div>` : (feed.length ? `
+    ${list.length ? `<div class="feed grid">${list.map(cardGrid).join('')}</div>` : (feed.length ? `
       <div class="empty"><div class="empty-ic">${I.spark(22)}</div>
         <div class="empty-title">ничего не нашлось</div>
         <div class="empty-sub">Поменяй дату или тип — или сбрось фильтры.</div>
@@ -594,24 +635,26 @@ function setDateFilter(d){ FILTER.date = (FILTER.date===d)?null:d; renderFeed();
 function setTypeFilter(t){ FILTER.type = t; renderFeed(); }
 function resetFilters(){ FILTER = {date:null,type:'все'}; renderFeed(); }
 
-function cardEditorial(e){
+function cardGrid(e){
   const f = fmt(e.starts_at);
-  return `<button class="pcard" onclick="openDetail(${e.id})">
-    <div class="pcard-cover ${covClass(e)}" ${coverStyle(e)}>
-      <div class="cover-mark">${e.has_cover?'':firstWord(e.title)}</div>
-      <div class="cover-top">
-        <span class="pill-live${e.featured?' promo':e.sold_out?' solid':''}">${e.featured?'🔥 ПРОМО':e.sold_out?'SOLD OUT':'ДРОП'}</span>
-        <span class="pill-price">${priceLabel(e)}</span>
+  const topLeft = e.sold_out
+    ? `<span class="pill-live solid small">SOLD OUT</span>`
+    : e.featured
+      ? `<span class="pill-live promo small">🔥 ПРОМО</span>`
+      : `<span class="pill-day">${f.dow} ${f.date}</span>`;
+  const loc = CITY===ALL_CITIES ? (esc(e.city)+(e.area?' · '+esc(e.area):'')) : (esc(e.area)||'место уточняется');
+  return `<button class="pcard gcard" onclick="openDetail(${e.id})">
+    <div class="gcard-cover ${covClass(e)}" ${coverStyle(e)}>
+      <div class="gcard-mark">${e.has_cover?'':firstWord(e.title)}</div>
+      <div class="gcard-top">
+        ${topLeft}
+        <span class="pill-price small">${priceLabel(e)}</span>
       </div>
     </div>
-    <div class="pcard-body">
-      <div class="metarow"><span>${f.dow} ${f.date}</span><span class="dot">·</span><span>${f.time}</span>${e.age_limit?`<span class="dot">·</span><span>${esc(e.age_limit)}</span>`:''}</div>
-      <div class="pcard-title">${esc(e.title)}</div>
-      <div class="pcard-sub">
-        <span class="loc">${I.pin()} ${CITY===ALL_CITIES?esc(e.city)+(e.area?' · '+esc(e.area):''):(esc(e.area)||'место уточняется')}</span>
-        ${e.genre?`<span class="loc">${esc(e.genre)}</span>`:''}
-      </div>
-    </div></button>`;
+    <div class="gcard-date">${f.dow} ${f.date} · ${f.time}</div>
+    <div class="gcard-title">${esc(e.title)}</div>
+    <div class="gcard-loc">${I.pin(12,'var(--text-3)')} ${loc}</div>
+  </button>`;
 }
 
 /* ───────── детали ───────── */
@@ -949,86 +992,96 @@ async function editEvent(id){
     price_num:priceNum, pay_url:e.pay_url||'', refs_needed:e.refs_needed||0, channel:e.channel||'',
     genre:e.genre||'', cover:e.cover||'violet', cover_data:'', photos_data:[], city:e.city||'Москва',
   };
-  EDIT_ID = id;
+  EDIT_ID = id; CREATE_STEP = 0;
   TAB='create'; renderTabbar(); $screen.scrollTop=0; renderCreate();
 }
+let CREATE_STEP = 0;
+const WIZ_STEPS = [{l:'инфо'},{l:'когда'},{l:'условия'}];
+function wizStep(n){ CREATE_STEP=n; $screen.scrollTop=0; renderCreate(); }
+function recapCard(F){
+  const st = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
+  return `<div class="recap">
+    <div class="recap-cover ${F.cover_data?'':covCls(F.cover)}" ${st}><div class="cover-preview-mark">${firstWord(F.title)||'NAME'}</div></div>
+    <div class="recap-body">
+      <div class="recap-title">${esc(F.title)||'Без названия'}</div>
+      <div class="recap-meta">${F.date?esc(F.date):'—'}${F.time?' · '+esc(F.time):''}</div>
+      <div class="recap-meta dim">${esc(F.area)||esc(F.city)||'место не указано'}</div>
+    </div></div>`;
+}
 function renderCreate(){
-  const _sc = $screen.scrollTop;                 // сохраняем прокрутку, чтобы не прыгало наверх
+  const _sc = $screen.scrollTop;
   requestAnimationFrame(function(){ $screen.scrollTop = _sc; });
   if(!FORM.city) FORM.city = (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва';
-  const F = FORM;
+  const F = FORM; const step = CREATE_STEP;
+  const valid = [F.title.trim().length>1, !!(F.date && F.time), true];
   const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
-  $screen.innerHTML = `
-  <div class="create">
-    <div class="screen-head tight"><h1 class="h-title">${EDIT_ID?'Изменить':'Создать'}</h1>
-      <p class="h-sub">${EDIT_ID?'Поправь детали и сохрани':'Оформи party как дроп — пару минут и готово'}</p></div>
 
-    <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или градиент</span></div>
+  // ── ШАГ 1: инфо ──
+  const pane1 = `<div class="wiz-pane">
+    <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или цвет</span></div>
       <div class="cover-preview ${F.cover_data?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
         <div class="cover-preview-mark" id="cov-mark">${firstWord(F.title)||'NAME'}</div>
         <label class="cover-upload">${I.image(16,'#fff')} Загрузить фото<input type="file" accept="image/*" style="display:none" onchange="pickCover(this)"></label>
       </div>
       <div class="cover-swatches">${COVERS.map(k=>`<button class="swatch ${covCls(k)}${(!F.cover_data&&F.cover===k)?' on':''}" onclick="setCover('${k}')"></button>`).join('')}</div>
-      ${F.cover_data?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';renderCreate()">Убрать фото, вернуть градиент</button>`:''}
+      ${F.cover_data?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';renderCreate()">Убрать фото, вернуть цвет</button>`:''}
     </div>
-
     <div class="field"><div class="field-lab"><span class="mono">ЕЩЁ ФОТО</span><span class="field-hint">до 5, карусель в карточке</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${F.photos_data.map((p,i)=>`<div style="position:relative"><img src="${p}" style="width:62px;height:62px;object-fit:cover;border-radius:10px"><button onclick="FORM.photos_data.splice(${i},1);renderCreate()" style="position:absolute;top:-6px;right:-6px;background:var(--bg);border-radius:50%;width:20px;height:20px;border:1px solid var(--line-2)">×</button></div>`).join('')}
         ${F.photos_data.length<5?`<label class="swatch" style="display:flex;align-items:center;justify-content:center;width:62px;height:62px;opacity:1;border:1px dashed var(--line-2)">${I.plus(18,'var(--text-2)')}<input type="file" accept="image/*" style="display:none" onchange="pickExtraPhoto(this)"></label>`:''}
-      </div>
-    </div>
-
+      </div></div>
     <div class="field"><div class="field-lab"><span class="mono">НАЗВАНИЕ<span class="req">*</span></span></div>
-      <input class="input" maxlength="80" placeholder="Например: NEON PARTY" value="${esc(F.title)}" oninput="FORM.title=this.value;document.getElementById('cov-mark').textContent=(this.value.split(' ')[0]||'NAME')"></div>
-
+      <input class="input" maxlength="80" placeholder="Например: NEON PARTY" value="${esc(F.title)}" oninput="FORM.title=this.value;var m=document.getElementById('cov-mark');if(m)m.textContent=(this.value.split(' ')[0]||'NAME')"></div>
+    <div class="field"><div class="field-lab"><span class="mono">ВАЙБ / ЖАНР</span><span class="field-hint">музыка · формат</span></div>
+      <input class="input" placeholder="techno · b2b" value="${esc(F.genre)}" oninput="FORM.genre=this.value"></div>
     <div class="field"><div class="field-lab"><span class="mono">ОПИСАНИЕ</span></div>
-      <textarea class="input textarea" rows="3" placeholder="Что за движ, лайнап, дресс-код…" oninput="FORM.description=this.value">${esc(F.description)}</textarea></div>
+      <textarea class="input textarea" rows="4" placeholder="Что за движ, лайнап, дресс-код…" oninput="FORM.description=this.value">${esc(F.description)}</textarea></div>
+  </div>`;
 
+  // ── ШАГ 2: когда/где ──
+  const pane2 = `<div class="wiz-pane">
+    ${recapCard(F)}
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ДАТА<span class="req">*</span></span></div>
-        <input class="input" type="date" value="${esc(F.date)}" onchange="FORM.date=this.value"></div>
+        <input class="input" type="date" value="${esc(F.date)}" onchange="FORM.date=this.value;renderCreate()"></div>
       <div class="field"><div class="field-lab"><span class="mono">НАЧАЛО<span class="req">*</span></span></div>
-        <input class="input" type="time" value="${esc(F.time)}" onchange="FORM.time=this.value"></div>
+        <input class="input" type="time" value="${esc(F.time)}" onchange="FORM.time=this.value;renderCreate()"></div>
     </div>
     <div class="field"><div class="field-lab"><span class="mono">КОНЕЦ</span><span class="field-hint">необязательно</span></div>
       <input class="input" type="time" value="${esc(F.endtime)}" onchange="FORM.endtime=this.value"></div>
-
+    <div class="field"><div class="field-lab"><span class="mono">ГОРОД</span></div>
+      <div class="seg" style="flex-wrap:wrap">${CITIES.map(c=>`<button class="seg-opt${F.city===c.name?' on':''}" style="flex:0 0 auto;padding:9px 13px" onclick="FORM.city='${c.name}';renderCreate()">${c.name}</button>`).join('')}</div></div>
     <div class="field"><div class="field-lab"><span class="mono">РАЙОН / МЕТРО</span><span class="field-hint">видно всем</span></div>
       <input class="input" placeholder="м. Курская" value="${esc(F.area)}" oninput="FORM.area=this.value"></div>
-
     <div class="field"><div class="field-lab"><span class="mono">ТОЧНЫЙ АДРЕС</span><span class="field-hint">придёт гостям перед началом</span></div>
       <input class="input" placeholder="Басманный пер. 8с1" value="${esc(F.address)}" oninput="FORM.address=this.value"></div>
+    <div class="hint-row" style="display:flex;gap:9px;align-items:center;color:var(--text-2);font-size:12.5px;padding:0 2px"><span>${I.lock(14)}</span><span>Точный адрес скрыт. Гости получат его в «Билетах» перед началом.</span></div>
+  </div>`;
 
+  // ── ШАГ 3: условия ──
+  const pane3 = `<div class="wiz-pane">
+    ${recapCard(F)}
+    <div class="field"><div class="field-lab"><span class="mono">ЦЕНА, ₽</span><span class="field-hint">пусто = бесплатно</span></div>
+      <div class="input-prefix" style="position:relative">
+        <input class="input" inputmode="numeric" placeholder="0" value="${esc(F.price_num)}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.price_num=this.value" style="padding-right:34px">
+        <span style="position:absolute;right:15px;top:50%;transform:translateY(-50%);color:var(--text-2);font-family:var(--mono)">₽</span>
+      </div></div>
+    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА QTICKETS</span><span class="field-hint">если платно через qtickets</span></div>
+      <input class="input" id="f-payurl" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
+      <div class="field" style="margin-top:-8px">
+        <button class="btn btn-ghost" style="width:100%" onclick="previewQtickets()">Подтянуть из qtickets</button>
+        <div id="qt-types"></div>
+      </div>
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ЛИМИТ МЕСТ</span><span class="field-hint">0 = без лимита</span></div>
         <div class="stepper"><button onclick="stepCap(-10)">−</button><input class="step-input" id="f-cap" inputmode="numeric" value="${F.capacity}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.capacity=+this.value||0"><button onclick="stepCap(10)">+</button></div></div>
       <div class="field"><div class="field-lab"><span class="mono">ВОЗРАСТ</span></div>
         <div class="seg">${['14+','18+'].map(a=>`<button class="seg-opt${F.age_limit===a?' on':''}" onclick="FORM.age_limit='${a}';renderCreate()">${a}</button>`).join('')}</div></div>
     </div>
-
-    <div class="field"><div class="field-lab"><span class="mono">ВАЙБ / ЖАНР</span><span class="field-hint">напр. techno · b2b</span></div>
-      <input class="input" placeholder="house party" value="${esc(F.genre)}" oninput="FORM.genre=this.value"></div>
-
-    <div class="field"><div class="field-lab"><span class="mono">ЦЕНА, ₽</span><span class="field-hint">пусто = free · только цифры</span></div>
-      <div class="input-prefix" style="position:relative">
-        <input class="input" inputmode="numeric" placeholder="500" value="${esc(F.price_num)}"
-          oninput="this.value=this.value.replace(/\\D/g,'');FORM.price_num=this.value"
-          style="padding-right:34px">
-        <span style="position:absolute;right:15px;top:50%;transform:translateY(-50%);color:var(--text-2);font-family:var(--mono)">₽</span>
-      </div></div>
-
-    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА QTICKETS</span><span class="field-hint">если платно</span></div>
-      <input class="input" id="f-payurl" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
-      <div class="field" style="margin-top:-8px">
-        <button class="btn btn-ghost" style="width:100%" onclick="previewQtickets()">Подтянуть билеты из qtickets</button>
-        <div id="qt-types"></div>
-        <div class="field-hint" style="margin-top:8px;line-height:1.4">Бот подтянет тарифы прямо из qtickets и сам поймает оплату — нужен подключённый qtickets в профиле.</div>
-      </div>
-
-    <div class="ref-card" style="margin:0 18px 18px">
+    <div class="ref-card">
       <div class="ref-title">Вход за репост / приглашения <span class="field-hint" style="font-family:var(--sans)">(free)</span></div>
-      <div class="ref-sub" style="margin-bottom:12px">Гость проходит бесплатно, если подпишется на твой канал и приведёт N друзей по своей ссылке. 0 друзей = достаточно просто подписки.</div>
+      <div class="ref-sub" style="margin-bottom:12px">Гость проходит бесплатно, если подпишется на твой канал и приведёт N друзей по своей ссылке. 0 друзей = достаточно подписки.</div>
       <div class="field-grid" style="padding:0">
         <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ДРУЗЕЙ ДЛЯ FREE</span><span class="field-hint">0 = выкл</span></div>
           <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" inputmode="numeric" value="${F.refs_needed}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
@@ -1038,14 +1091,29 @@ function renderCreate(){
       <div style="height:10px"></div>
       <button class="btn btn-ghost" style="width:100%" onclick="checkChannel()">Проверить бота в канале</button>
       <div id="chan-status"></div>
-      <div class="field-hint" style="margin-top:8px;line-height:1.45">⚠️ Чтобы бот проверял подписку, добавь его <b>администратором</b> своего канала. Иначе условие не сработает.</div>
+      <div class="field-hint" style="margin-top:8px;line-height:1.45">⚠️ Чтобы бот проверял подписку, добавь его <b>администратором</b> канала.</div>
     </div>
+  </div>`;
 
-    <div class="field"><div class="field-lab"><span class="mono">ГОРОД</span></div>
-      <div class="seg" style="flex-wrap:wrap">${CITIES.map(c=>`<button class="seg-opt${F.city===c.name?' on':''}" style="flex:0 0 auto;padding:9px 13px" onclick="FORM.city='${c.name}';renderCreate()">${c.name}</button>`).join('')}</div></div>
-
-    <div class="create-cta"><button class="btn btn-primary cta-go" onclick="confirmPublish()">${EDIT_ID?'Сохранить':'Опубликовать party'} ${I.arrow()}</button></div>
-    ${EDIT_ID?`<div style="padding:0 18px 16px"><button class="btn btn-ghost" style="width:100%" onclick="cancelEdit()">Отмена</button></div>`:''}
+  const pane = [pane1,pane2,pane3][step];
+  const nextLabel = step<2 ? `Далее ${I.arrow()}` : (EDIT_ID?`Сохранить ${I.arrow()}`:`Опубликовать ${I.arrow()}`);
+  const nextAction = step<2 ? `wizStep(${step+1})` : 'confirmPublish()';
+  $screen.innerHTML = `
+  <div class="create screen-scroll">
+    <div class="wiz-head">
+      <div class="wiz-steps">
+        ${WIZ_STEPS.map((s,i)=>`<button class="wiz-step${i===step?' on':''}${i<step?' done':''}" onclick="${i<step?`wizStep(${i})`:''}">
+          <span class="wiz-dot">${i<step?I.check(12,'#fff'):(i+1)}</span><span class="wiz-lab">${s.l}</span></button>`).join('')}
+      </div>
+      <div class="wiz-bar"><div class="wiz-bar-fill" style="width:${(step+1)/3*100}%"></div></div>
+    </div>
+    ${pane}
+    <div style="height:90px"></div>
+    <div class="wiz-cta">
+      ${step>0?`<button class="btn btn-ghost wiz-back" onclick="wizStep(${step-1})">${I.back(17,'var(--text-1)')} Назад</button>`
+              :(EDIT_ID?`<button class="btn btn-ghost wiz-back" onclick="cancelEdit()">Отмена</button>`:'')}
+      <button class="btn btn-primary wiz-next${valid[step]?'':' disabled'}" ${valid[step]?'':'disabled'} onclick="${nextAction}">${nextLabel}</button>
+    </div>
   </div>`;
 }
 function cancelEdit(){ EDIT_ID=null; FORM=blankForm(); go('profile'); }
