@@ -424,6 +424,14 @@ def set_qtickets_token(user_id: int, token: str) -> None:
     c.commit()
 
 
+def event_by_qt(org_id: int, qt_event_id: int) -> sqlite3.Row | None:
+    """Уже импортированное из qtickets событие этого организатора (дедуп импорта)."""
+    return conn().execute(
+        "SELECT * FROM events WHERE org_id=? AND qt_event_id=? LIMIT 1",
+        (org_id, qt_event_id),
+    ).fetchone()
+
+
 def events_with_qtickets() -> list[sqlite3.Row]:
     """Активные будущие события, привязанные к qtickets, с токеном организатора."""
     return conn().execute(

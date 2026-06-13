@@ -369,7 +369,50 @@ async def h_qtickets_connect(request: web.Request):
     if not ok:
         return web.json_response({"error": "Токен не подошёл. Проверь, что скопировал целиком из «Настройки → Основное» в qtickets."}, status=400)
     db.set_qtickets_token(me, token)
-    return web.json_response({"connected": True})
+    # сразу импортируем все события организатора из qtickets
+    imported = await _import_qtickets_events(me, token)
+    return web.json_response({"connected": True, "imported": imported})
+
+
+async def _import_qtickets_events(org_id: int, token: str) -> int:
+    """Тянет события организатора из qtickets и заводит недостающие в боте."""
+    loop = asyncio.get_event_loop()
+    events = await loop.run_in_executor(None, qtickets.list_my_events, token)
+    created = 0
+    verified = db.is_verified(org_id)
+    for ev in events:
+        qt_id = ev.get("id")
+        if not qt_id or db.event_by_qt(org_id, int(qt_id)):
+            continue
+        starts, ends = qtickets.event_times(ev)
+        if not starts or starts < time.time() - 6 * 3600:
+            continue  # пропускаем прошедшие/без даты
+        data = {
+            "title": (ev.get("name") or "Событие")[:80],
+            "description": (ev.get("description") or "")[:1500],
+            "starts_at": starts, "ends_at": ends,
+            "area": ev.get("place_name") or "",
+            "address": ev.get("place_address") or "",
+            "city": "Москва",
+            "pay_url": ev.get("site_url") or f"https://qtickets.ru/event/{qt_id}",
+            "qt_event_id": int(qt_id),
+            "cover": "ultramarine",
+        }
+        # импортированные с реального qtickets-аккаунта считаем достоверными
+        status = "active" if verified else "pending"
+        eid = db.create_event(org_id, data, status=status)
+        created += 1
+    return created
+
+
+async def h_qtickets_import(request: web.Request):
+    """Повторный импорт/синхронизация событий организатора из qtickets."""
+    me = request["user"]["id"]
+    u = db.get_user(me)
+    if not u or not u["qtickets_token"]:
+        return web.json_response({"error": "Сначала подключи qtickets", "need": "connect"}, status=400)
+    imported = await _import_qtickets_events(me, u["qtickets_token"])
+    return web.json_response({"ok": True, "imported": imported})
 
 
 async def h_qtickets_preview(request: web.Request):
@@ -653,5 +696,6 @@ def make_web_app(bot) -> web.Application:
         web.get("/api/qtickets/status", h_qtickets_status),
         web.post("/api/qtickets/connect", h_qtickets_connect),
         web.post("/api/qtickets/preview", h_qtickets_preview),
+        web.post("/api/qtickets/import", h_qtickets_import),
     ])
     return app

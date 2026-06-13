@@ -108,6 +108,48 @@ def extract_tg_id(order: dict) -> int | None:
     return None
 
 
+def list_my_events(token: str) -> list[dict]:
+    """Все активные события организатора в qtickets (для автоимпорта в бота)."""
+    try:
+        body = {"where": [{"column": "deleted_at", "operator": "null"}],
+                "orderBy": {"id": "desc"}, "page": 1}
+        r = requests.get(f"{BASE}/events", headers=_headers(token), json=body, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return []
+        data = r.json() or {}
+        rows = data.get("data") or []
+        return rows if isinstance(rows, list) else []
+    except Exception as e:
+        log.warning("list_my_events failed: %s", e)
+        return []
+
+
+def event_times(ev: dict) -> tuple[int, int]:
+    """Из события qtickets достаём (начало, конец) ближайшего показа как unix ts."""
+    import datetime
+    starts, ends = 0, 0
+    shows = ev.get("shows") or []
+    best = None
+    for sh in shows:
+        sd = sh.get("start_date") or sh.get("open_date")
+        if not sd:
+            continue
+        try:
+            ts = int(datetime.datetime.fromisoformat(sd).timestamp())
+        except Exception:
+            continue
+        if best is None or ts < best:
+            best = ts
+            starts = ts
+            fd = sh.get("finish_date")
+            if fd:
+                try:
+                    ends = int(datetime.datetime.fromisoformat(fd).timestamp())
+                except Exception:
+                    ends = 0
+    return starts, ends
+
+
 def list_paid_orders(token: str, event_id: int) -> list[dict]:
     """Оплаченные заказы события."""
     try:

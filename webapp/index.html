@@ -309,7 +309,9 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 
 /* плавность появления контента */
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-.screen-head,.feed,.ticket-list,.my-list,.empty,.profile-head,.seg{animation:fadeUp .26s cubic-bezier(.2,.8,.2,1);}
+.feed,.ticket-list,.my-list,.empty{animation:fadeUp .24s cubic-bezier(.2,.8,.2,1);}
+.screen-area{scroll-behavior:smooth;overscroll-behavior:contain;}
+.create{animation:none;}
 .pcard{animation:fadeUp .3s cubic-bezier(.2,.8,.2,1) both;}
 .feed .pcard:nth-child(2){animation-delay:.04s;}
 .feed .pcard:nth-child(3){animation-delay:.08s;}
@@ -337,6 +339,7 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 /* ───────── базовое ───────── */
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
+try{ tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}  // чтобы экран не уезжал при вводе
 const ME = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {id:0, first_name:'Гость', username:''};
 const $screen = document.getElementById('screen');
 const $overlays = document.getElementById('overlays');
@@ -814,6 +817,8 @@ function blankForm(){
 }
 let FORM = blankForm();
 function renderCreate(){
+  const _sc = $screen.scrollTop;                 // сохраняем прокрутку, чтобы не прыгало наверх
+  requestAnimationFrame(function(){ $screen.scrollTop = _sc; });
   if(!FORM.city) FORM.city = (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва';
   const F = FORM;
   const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
@@ -1019,7 +1024,9 @@ function qtCard(connected){
     </div>
     <div style="height:10px"></div>
     ${connected
-      ? `<button class="btn btn-ghost" style="width:100%" onclick="disconnectQtickets()">Отключить qtickets</button>`
+      ? `<button class="btn btn-primary" style="width:100%" onclick="syncQtickets(this)">Синхронизировать события</button>
+         <div style="height:8px"></div>
+         <button class="btn btn-ghost" style="width:100%" onclick="disconnectQtickets()">Отключить qtickets</button>`
       : `<button class="btn btn-primary" style="width:100%" onclick="openQtConnect()">Подключить qtickets</button>`}
   </div>`;
 }
@@ -1214,15 +1221,22 @@ async function saveQtToken(){
   const btn = document.getElementById('qt-save');
   btn.disabled = true; btn.textContent = 'Проверяю…';
   try{
-    await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:token})});
+    const r=await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:token})});
     haptic(); const s=document.getElementById('qt-sheet'); if(s) s.remove();
-    toast('qtickets подключён ✓'); renderProfile();
+    toast(r.imported>0 ? ('qtickets подключён ✓ Импортировано событий: '+r.imported) : 'qtickets подключён ✓');
+    renderProfile();
   }catch(e){ toast(e.message,false); btn.disabled=false; btn.textContent='Подключить'; }
 }
 async function disconnectQtickets(){
   try{ await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:''})});
     toast('qtickets отключён'); renderProfile(); }
   catch(e){ toast(e.message,false); }
+}
+async function syncQtickets(btn){
+  if(btn){ btn.disabled=true; btn.textContent='Синхронизирую…'; }
+  try{ const r=await api('/api/qtickets/import',{method:'POST',body:'{}'});
+    haptic(); toast(r.imported>0?('Добавлено событий: '+r.imported):'Новых событий нет'); renderProfile(); }
+  catch(e){ toast(e.message,false); if(btn){ btn.disabled=false; btn.textContent='Синхронизировать события'; } }
 }
 async function previewQtickets(){
   const url = (document.getElementById('f-payurl')||{}).value || FORM.pay_url;
