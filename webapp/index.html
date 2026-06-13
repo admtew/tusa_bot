@@ -1378,16 +1378,29 @@ async function previewQtickets(){
   box.innerHTML = '<div class="field-hint" style="margin-top:10px">Загружаю тарифы…</div>';
   try{
     const r = await api('/api/qtickets/preview',{method:'POST',body:JSON.stringify({url:url})});
-    if(!r.types || !r.types.length){
-      box.innerHTML = '<div class="field-hint" style="margin-top:10px">Тарифы не нашлись. Проверь ссылку — или билеты ещё не настроены в qtickets.</div>';
+    // автозаполнение пустых полей из qtickets (не перезатираем то, что ты уже ввёл)
+    const fl = r.fields||{}; let filled=false; const pad=n=>String(n).padStart(2,'0');
+    if(fl.title && !FORM.title){ FORM.title=fl.title; filled=true; }
+    if(fl.description && !FORM.description){ FORM.description=fl.description; filled=true; }
+    if(fl.area && !FORM.area){ FORM.area=fl.area; filled=true; }
+    if(fl.address && !FORM.address){ FORM.address=fl.address; filled=true; }
+    if(fl.price_text && !FORM.price_num){ FORM.price_num=(fl.price_text.match(/\d+/g)||[]).join(''); filled=true; }
+    if(fl.starts_at){ const d=new Date(fl.starts_at*1000);
+      if(!FORM.date){ FORM.date=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; filled=true; }
+      if(FORM.time==='18:00'){ FORM.time=`${pad(d.getHours())}:${pad(d.getMinutes())}`; filled=true; } }
+    if(fl.ends_at && !FORM.endtime){ const x=new Date(fl.ends_at*1000); FORM.endtime=`${pad(x.getHours())}:${pad(x.getMinutes())}`; filled=true; }
+    const typesHtml = (r.types && r.types.length)
+      ? '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">' +
+        r.types.map(function(t){ return `<div style="display:flex;justify-content:space-between;background:var(--surface-2);border-radius:10px;padding:9px 12px;font-size:13px"><span>${esc(t.name)}</span><span class="mono" style="color:var(--text-1)">${(t.price||0).toLocaleString('ru-RU')} ₽</span></div>`; }).join('') +
+        '</div><div class="field-hint" style="margin-top:8px;color:#2ecc71">✓ Привязано. Бот поймает оплату и распроданность автоматически.</div>'
+      : '<div class="field-hint" style="margin-top:10px">Тарифы не нашлись — проверь ссылку или настрой билеты в qtickets.</div>';
+    if(filled){
+      haptic();
+      renderCreate();                                  // перерисовали форму с заполненными полями
+      const b=document.getElementById('qt-types'); if(b) b.innerHTML = typesHtml + '<div class="field-hint" style="margin-top:6px;color:#2ecc71">✓ Поля заполнены из qtickets</div>';
       return;
     }
-    box.innerHTML = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">' +
-      r.types.map(function(t){
-        return `<div style="display:flex;justify-content:space-between;background:var(--surface-2);border-radius:10px;padding:9px 12px;font-size:13px">
-          <span>${esc(t.name)}</span><span class="mono" style="color:var(--text-1)">${(t.price||0).toLocaleString('ru-RU')} ₽</span></div>`;
-      }).join('') + '</div>' +
-      '<div class="field-hint" style="margin-top:8px;color:#2ecc71">✓ Привязано. Бот поймает оплату автоматически.</div>';
+    box.innerHTML = typesHtml;
     haptic();
   }catch(err){
     if(err.data && err.data.need==='connect'){

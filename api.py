@@ -638,9 +638,10 @@ async def h_qtickets_preview(request: web.Request):
     eid = qtickets.parse_event_id(body.get("url", ""))
     if not eid:
         return web.json_response({"error": "Не похоже на ссылку qtickets на событие"}, status=400)
-    types = await asyncio.get_event_loop().run_in_executor(
-        None, qtickets.get_ticket_types, u["qtickets_token"], eid)
-    return web.json_response({"qt_event_id": eid, "types": types})
+    loop = asyncio.get_event_loop()
+    types = await loop.run_in_executor(None, qtickets.get_ticket_types, u["qtickets_token"], eid)
+    fields = await loop.run_in_executor(None, qtickets.event_fields, u["qtickets_token"], eid)
+    return web.json_response({"qt_event_id": eid, "types": types, "fields": fields})
 
 
 async def h_claim_free(request: web.Request):
@@ -858,6 +859,13 @@ async def poll_qtickets_payments(bot) -> None:
     loop = asyncio.get_event_loop()
     for e in db.events_with_qtickets():
         token, qt_eid, event_id = e["qtickets_token"], e["qt_event_id"], e["id"]
+        # авто sold-out: спрашиваем остаток мест у qtickets
+        try:
+            sold = await loop.run_in_executor(None, qtickets.is_sold_out, token, qt_eid)
+            if sold is not None and bool(e["soldout"]) != sold:
+                db.set_soldout(event_id, e["org_id"], sold, force=True)
+        except Exception as ex:
+            log.warning("auto soldout event=%s failed: %s", event_id, ex)
         try:
             orders = await loop.run_in_executor(None, qtickets.list_paid_orders, token, qt_eid)
         except Exception as ex:

@@ -82,6 +82,72 @@ def get_ticket_types(token: str, event_id: int) -> list[dict]:
     return out
 
 
+def event_fields(token: str, event_id: int) -> dict:
+    """Данные события из qtickets для автозаполнения формы создания."""
+    out = {}
+    try:
+        r = requests.get(f"{BASE}/events/{event_id}", headers=_headers(token), timeout=TIMEOUT)
+        if r.status_code != 200:
+            return out
+        ev = (r.json() or {}).get("data") or {}
+    except Exception as e:
+        log.warning("event_fields failed: %s", e)
+        return out
+    out["title"] = (ev.get("name") or "")[:80]
+    out["description"] = (ev.get("description") or "")[:1500]
+    out["area"] = ev.get("place_name") or ""
+    out["address"] = ev.get("place_address") or ""
+    starts, ends = event_times(ev)
+    if starts:
+        out["starts_at"] = starts
+    if ends:
+        out["ends_at"] = ends
+    types = get_ticket_types(token, event_id)
+    if types:
+        prices = [t["price"] for t in types if t.get("price")]
+        if prices:
+            out["price_text"] = f"от {min(prices):,} ₽".replace(",", " ")
+    return out
+
+
+def is_sold_out(token: str, event_id: int) -> bool | None:
+    """Распродано ли событие (по сумме свободных мест всех показов).
+    None — не удалось определить (не трогаем статус)."""
+    try:
+        r = requests.get(f"{BASE}/events/{event_id}", headers=_headers(token), timeout=TIMEOUT)
+        if r.status_code != 200:
+            return None
+        ev = (r.json() or {}).get("data") or {}
+    except Exception as e:
+        log.warning("is_sold_out event=%s failed: %s", event_id, e)
+        return None
+    shows = ev.get("shows") or []
+    if not shows:
+        return None
+    total_free = 0
+    checked = False
+    for sh in shows:
+        sid = sh.get("id")
+        if not sid:
+            continue
+        try:
+            body = {"select": ["free_quantity", "available"],
+                    "where": [{"column": "available", "value": True}], "flat": True}
+            rs = requests.get(f"{BASE}/shows/{sid}/seats", headers=_headers(token),
+                              json=body, timeout=TIMEOUT)
+            if rs.status_code != 200:
+                continue
+            seats = (rs.json() or {}).get("data") or {}
+            checked = True
+            for s in (seats.values() if isinstance(seats, dict) else seats):
+                total_free += int(s.get("free_quantity") or 0)
+        except Exception:
+            continue
+    if not checked:
+        return None
+    return total_free <= 0
+
+
 def extract_tg_id(order: dict) -> int | None:
     """Достаём telegram id покупателя из заказа: либо из client.details.telegram_user,
     либо из utm_content (если ссылку на оплату пометили tg_id-ом)."""
