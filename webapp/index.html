@@ -12,12 +12,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <style>
 :root{
-  --bg:#0a0a0b; --surface:#121214; --surface-2:#1a1a1d;
-  --line:rgba(255,255,255,0.09); --line-2:rgba(255,255,255,0.14);
-  --text-0:#f5f5f4; --text-1:#cfcfca; --text-2:#8d8d88; --text-3:#5c5c58;
+  --bg:#0a0a0b; --surface:#141312; --surface-2:#1d1b18;
+  --line:rgba(237,231,219,0.09); --line-2:rgba(237,231,219,0.15);
+  --text-0:#EDE7DB; --text-1:#C6C1B6; --text-2:#8b877e; --text-3:#5a574f;
   --accent:#FF3D5A;
+  --head-bg:rgba(10,10,11,0.82); --bar-bg:rgba(12,12,14,0.92);
   --display:'Archivo',sans-serif; --sans:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
   --r:18px;
+}
+/* светлая тема (переключатель в профиле) */
+body[data-theme="light"]{
+  --bg:#F2EEE6; --surface:#FFFFFF; --surface-2:#EAE4D9;
+  --line:rgba(22,18,12,0.10); --line-2:rgba(22,18,12,0.17);
+  --text-0:#161310; --text-1:#46433c; --text-2:#79756b; --text-3:#a8a499;
+  --head-bg:rgba(242,238,230,0.82); --bar-bg:rgba(242,238,230,0.92);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   -webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
@@ -41,7 +49,7 @@ input,textarea,select{font-family:inherit;}
 .cov-teal{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"),radial-gradient(120% 100% at 20% 80%,#2effc4 0%,#128a72 36%,#0a322a 78%,#051813 100%);}
 
 /* header */
-.tg-head{flex-shrink:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--line);background:rgba(10,10,11,0.8);backdrop-filter:blur(20px);position:relative;z-index:20;}
+.tg-head{flex-shrink:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--line);background:var(--head-bg);backdrop-filter:blur(20px);position:relative;z-index:20;}
 .tg-head-l{display:flex;align-items:center;gap:12px;min-width:0;}
 .tg-logo{font-family:var(--display);font-weight:800;font-size:23px;letter-spacing:-1px;background:linear-gradient(180deg,#fff,#bdbdba);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .city-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:100px;background:var(--surface);border:1px solid var(--line);max-width:160px;}
@@ -103,7 +111,7 @@ input,textarea,select{font-family:inherit;}
 .btn-soldout{background:var(--surface-2);color:var(--text-3);padding:15px 22px;}
 
 /* tabbar */
-.tabbar{flex-shrink:0;display:flex;align-items:center;justify-content:space-around;padding:9px 12px calc(9px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:rgba(12,12,14,0.92);backdrop-filter:blur(24px);position:relative;z-index:20;}
+.tabbar{flex-shrink:0;display:flex;align-items:center;justify-content:space-around;padding:9px 12px calc(9px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--bar-bg);backdrop-filter:blur(24px);position:relative;z-index:20;}
 .tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 12px;flex:1;}
 .tab-lab{font-size:10.5px;color:var(--text-3);font-weight:500;text-transform:lowercase;}
 .tab.on .tab-lab{color:var(--text-0);}
@@ -282,6 +290,18 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 @keyframes toastIn{from{transform:translate(-50%,16px);opacity:0;}to{transform:translate(-50%,0);opacity:1;}}
 .loading{padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:12px;letter-spacing:1px;}
 
+/* boot splash */
+#splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 32%,#1a130f 0%,#0a0a0b 70%);animation:splashOut .5s ease 1.2s forwards;}
+.splash-word{position:relative;display:flex;align-items:flex-end;font-family:var(--display);font-weight:900;font-size:54px;letter-spacing:-2.5px;color:#EDE7DB;line-height:1;animation:splashIn .7s cubic-bezier(.2,.85,.25,1) both;}
+.splash-word .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);margin:0 0 11px 4px;box-shadow:0 0 22px 2px rgba(255,61,90,.55);animation:dotPulse 1.1s ease-in-out infinite;}
+.splash-sub{font-family:var(--mono);font-size:10.5px;letter-spacing:4px;text-transform:uppercase;color:#6a665e;margin-top:18px;animation:splashIn .7s .12s cubic-bezier(.2,.85,.25,1) both;}
+.splash-bar{width:64px;height:2px;border-radius:2px;background:rgba(237,231,219,0.12);overflow:hidden;margin-top:26px;}
+.splash-bar i{display:block;height:100%;width:40%;background:var(--accent);border-radius:2px;animation:loadBar 1.2s ease-in-out infinite;}
+@keyframes splashIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+@keyframes splashOut{to{opacity:0;visibility:hidden;}}
+@keyframes dotPulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.35);opacity:.7;}}
+@keyframes loadBar{0%{transform:translateX(-120%);}100%{transform:translateX(320%);}}
+
 /* skeleton */
 @keyframes shimmer{0%{background-position:-400px 0;}100%{background-position:400px 0;}}
 .sk{background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);background-size:800px 100%;animation:shimmer 1.3s infinite;border-radius:10px;}
@@ -327,6 +347,7 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 </style>
 </head>
 <body>
+<div id="splash"><div class="splash-word">AFTERS<span class="dot"></span></div><div class="splash-sub">афиша вечеринок</div><div class="splash-bar"><i></i></div></div>
 <header class="tg-head">
   <div class="tg-head-l">
     <div class="tg-logo">AFTERS</div>
@@ -344,6 +365,23 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
 try{ tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}  // чтобы экран не уезжал при вводе
+/* тема (тёмная/светлая) */
+let THEME='dark';
+try{ THEME = localStorage.getItem('afters_theme') || 'dark'; }catch(e){}
+function applyTheme(){
+  document.body.dataset.theme = THEME;
+  const bg = THEME==='dark' ? '#0a0a0b' : '#F2EEE6';
+  try{ tg.setBackgroundColor && tg.setBackgroundColor(bg); tg.setHeaderColor && tg.setHeaderColor(bg); }catch(e){}
+}
+applyTheme();
+function toggleTheme(){
+  THEME = THEME==='dark'?'light':'dark';
+  applyTheme();
+  try{ localStorage.setItem('afters_theme', THEME); }catch(e){}
+  haptic(); renderProfile();
+}
+/* убираем сплэш после анимации */
+setTimeout(function(){ const s=document.getElementById('splash'); if(s) s.remove(); }, 1750);
 const ME = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {id:0, first_name:'Гость', username:''};
 const $screen = document.getElementById('screen');
 const $overlays = document.getElementById('overlays');
@@ -421,6 +459,8 @@ const I = {
   qr:(s=14,c='var(--text-2)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h2.5v2.5M20.5 14.5v6M14.5 20.5h2.5"/></svg>`,
   camera:(s=18,c='#fff')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8.5 7 10 4.5h4L15.5 7"/><circle cx="12" cy="13" r="3.4"/></svg>`,
   image:(s=18,c='#fff')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.4"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 17l4.5-4 3.5 3 3-2.5 4 3.5"/></svg>`,
+  sun:(s=19,c='var(--text-1)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>`,
+  moon:(s=18,c='var(--text-1)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5Z"/></svg>`,
   trash:(s=16,c='var(--text-2)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>`,
 };
 /* класс обложки: своё фото (cov-img, без зерна/плитки) или градиент */
@@ -1127,6 +1167,7 @@ async function renderProfile(){
           <div class="profile-name">${esc(ME.first_name||'ты')}${qt.verified?' <span style="color:#3aa0ff;font-size:18px">✔︎</span>':''}</div>
           ${ME.username?`<span class="profile-handle">@${esc(ME.username)}</span>`:''}
         </div>
+        <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="toggleTheme()">${THEME==='dark'?I.sun(19):I.moon(18)}</button>
       </div>
       <div class="profile-stats">
         <div class="pstat"><div class="pstat-n">${mine.length}</div><span class="pstat-l">организую</span></div>
