@@ -304,6 +304,9 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .ticket.glass{background:linear-gradient(135deg,rgba(255,61,90,.10),rgba(124,92,255,.08)),var(--surface);border:1px solid var(--line-2);box-shadow:0 8px 30px -14px rgba(0,0,0,.7);}
 .ticket.dim{opacity:.55;}
 
+/* своя фото-обложка: целая картинка, без зерна и без плитки */
+.cov-img{background-size:cover !important;background-position:center !important;background-repeat:no-repeat !important;background-blend-mode:normal !important;}
+
 /* плавность появления контента */
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .screen-head,.feed,.ticket-list,.my-list,.empty,.profile-head,.seg{animation:fadeUp .26s cubic-bezier(.2,.8,.2,1);}
@@ -405,9 +408,10 @@ const I = {
   image:(s=18,c='#fff')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.4"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 17l4.5-4 3.5 3 3-2.5 4 3.5"/></svg>`,
   trash:(s=16,c='var(--text-2)')=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>`,
 };
-/* стиль обложки: своя картинка или градиент-класс */
+/* класс обложки: своё фото (cov-img, без зерна/плитки) или градиент */
+function covClass(e){ return (e && e.has_cover) ? 'cov-img' : covCls(e.cover); }
 function coverStyle(e){
-  return e && e.has_cover ? `style="background-image:url(/cover/${e.id});background-size:cover;background-position:center"` : '';
+  return e && e.has_cover ? `style="background-image:url(/cover/${e.id})"` : '';
 }
 function avatar(name, size, accent){
   const letter = (name||'?').replace(/[^a-zа-яё0-9]/i,'').charAt(0).toUpperCase() || '?';
@@ -537,7 +541,7 @@ function resetFilters(){ FILTER = {date:null,type:'все'}; renderFeed(); }
 function cardEditorial(e){
   const f = fmt(e.starts_at);
   return `<button class="pcard" onclick="openDetail(${e.id})">
-    <div class="pcard-cover ${covCls(e.cover)}" ${coverStyle(e)}>
+    <div class="pcard-cover ${covClass(e)}" ${coverStyle(e)}>
       <div class="cover-mark">${e.has_cover?'':firstWord(e.title)}</div>
       <div class="cover-top">
         <span class="pill-live${e.sold_out?' solid':''}">${e.sold_out?'SOLD OUT':'ДРОП'}</span>
@@ -600,7 +604,7 @@ async function openDetail(id){
        <div class="field-hint" style="text-align:center;margin-top:8px">организатор подтвердит, и QR появится в «Билетах»</div></div>` : '<div style="height:14px"></div>';
 
   ov.innerHTML = `<div class="detail">
-    <div class="detail-hero ${covCls(e.cover)}" ${coverStyle(e)}>
+    <div class="detail-hero ${covClass(e)}" ${coverStyle(e)}>
       <div class="detail-hero-scrim"></div>
       <div class="detail-topbar">
         <button class="glass-btn" onclick="closeDetail()">${I.back()}</button>
@@ -615,7 +619,7 @@ async function openDetail(id){
     <div class="detail-body">
       ${e.photos>0?`<div class="carousel" id="carousel">
         <div class="carousel-track" id="ctrack">
-          <div class="carousel-slide ${covCls(e.cover)}" ${coverStyle(e)}></div>
+          <div class="carousel-slide ${covClass(e)}" ${coverStyle(e)}></div>
           ${Array.from({length:e.photos}).map((_,i)=>`<div class="carousel-slide" style="background-image:url(/photo/${e.id}/${i})"></div>`).join('')}
         </div>
         <div class="carousel-dots">${Array.from({length:e.photos+1}).map((_,i)=>`<span class="cdot${i===0?' on':''}"></span>`).join('')}</div>
@@ -1030,10 +1034,10 @@ function renderMine(mine){
     const pct = p.capacity?Math.min(100,Math.round(p.taken/p.capacity*100)):0;
     const live = p.status==='active';
     return `<div class="mycard">
-      <div class="mycard-cover ${covCls(p.cover)}" ${coverStyle(p)}><div class="mycard-cover-mark">${p.has_cover?'':firstWord(p.title)}</div></div>
+      <div class="mycard-cover ${covClass(p)}" ${coverStyle(p)} onclick="openDetail(${p.id})" style="cursor:pointer"><div class="mycard-cover-mark">${p.has_cover?'':firstWord(p.title)}</div></div>
       <div class="mycard-body">
         <div class="mycard-date">${f.dow} ${f.date} · ${f.time} ${badge(p.status)}</div>
-        <div class="mycard-title">${esc(p.title)}</div>
+        <div class="mycard-title" onclick="openDetail(${p.id})" style="cursor:pointer">${esc(p.title)}</div>
         <div class="mycard-stat"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
           <span class="mycard-num">${p.taken}${p.capacity?'/'+p.capacity:''}</span></div>
         <div class="mycard-actions">
