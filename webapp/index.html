@@ -688,9 +688,10 @@ function claimPaid(id){
     <div class="sheet-head"><div class="sheet-title">Подтвердить оплату</div>
       <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
     <div class="sheet-body">
-      <div class="ref-sub" style="margin-bottom:14px">Загрузи скрин или PDF своего билета — организатор проверит и подтвердит, что ты идёшь.</div>
+      <div class="ref-sub" style="margin-bottom:14px">Загрузи скрин или PDF билета — мы проверим подлинность и подтвердим участие.</div>
       <label class="btn btn-ghost" style="width:100%">${I.image(16,'var(--text-1)')} Выбрать файл<input type="file" accept="image/*,application/pdf" style="display:none" onchange="pickProof(this,${id})"></label>
       <div id="proof-prev" style="margin-top:12px"></div>
+      <div class="lock-note" style="margin-top:16px">${I.lock(15)}<span>🔒 Файл нужен только для подтверждения и <b>удаляется автоматически</b> после мероприятия. Личные данные не храним.</span></div>
     </div>`;
   $overlays.appendChild(sh);
 }
@@ -719,7 +720,7 @@ async function sendProof(id){
   if(!PROOF_DATA){ toast('Сначала выбери файл',false); return; }
   try{ await api('/api/events/'+id+'/claim_paid',{method:'POST',body:JSON.stringify({proof_data:PROOF_DATA})});
     haptic(); PROOF_DATA=''; const s=document.getElementById('proof-sheet'); if(s) s.remove();
-    toast('Отправлено! Организатор проверит билет'); closeDetail(); }
+    toast('Заявка принята, проверяем подлинность ✓'); closeDetail(); }
   catch(err){ toast(err.message,false); }
 }
 /* ссылка оплаты с меткой tg_id, чтобы бот сам сопоставил оплату */

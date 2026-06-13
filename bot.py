@@ -155,7 +155,19 @@ async def cmd_support(message: Message) -> None:
     await message.answer(
         "<b>Поддержка</b> 💬\n\n"
         f"Нашёл баг или есть вопрос — пиши {config.SUPPORT_CONTACT}.\n"
-        "Постараемся ответить быстро.",
+        "За ботом стоит реальный человек, а не безликий алгоритм — поможем разобраться.",
+    )
+
+
+@router.message(Command("security"))
+async def cmd_security(message: Message) -> None:
+    await message.answer(
+        "<b>Безопасность и приватность</b> 🔒\n\n"
+        "• Скрин/PDF билета нужен только чтобы организатор подтвердил, что ты идёшь.\n"
+        "• Файл <b>автоматически удаляется</b> после мероприятия (и сразу после подтверждения) — мы не храним чужие билеты.\n"
+        "• Лишних личных данных не собираем и третьим лицам не передаём.\n"
+        "• События проверяются модерацией, у проверенных организаторов — галочка ✔︎.\n\n"
+        f"Вопросы по безопасности — {config.SUPPORT_CONTACT}",
     )
 
 
@@ -325,6 +337,7 @@ async def main() -> None:
         BotCommand(command="start", description="🎉 Открыть AFTERS"),
         BotCommand(command="app", description="🎟 Все вечеринки города"),
         BotCommand(command="help", description="ℹ️ Как это работает"),
+        BotCommand(command="security", description="🔒 Безопасность и приватность"),
         BotCommand(command="support", description="💬 Поддержка"),
     ])
 
@@ -344,8 +357,10 @@ async def main() -> None:
     scheduler.add_job(send_reminders, "interval", minutes=5, args=[bot])
     scheduler.add_job(poll_qtickets_payments, "interval", minutes=2, args=[bot])
     scheduler.add_job(lambda: db.mark_past_events(), "interval", minutes=10)
+    scheduler.add_job(lambda: db.purge_old_proofs(), "interval", hours=6)  # приватность: чистим скрины
     scheduler.start()
     db.mark_past_events()  # разово на старте
+    db.purge_old_proofs()
 
     log.info("Bot started")
     await dp.start_polling(bot)

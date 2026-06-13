@@ -387,10 +387,28 @@ def get_proof(code: str) -> tuple[bytes, str] | None:
 
 
 def reject_ticket(code: str) -> None:
-    """Отклонение заявки: билет revoked (для гостя — тишина)."""
+    """Отклонение заявки: билет revoked (для гостя — тишина). Скрин сразу стираем."""
     c = conn()
-    c.execute("UPDATE tickets SET status='revoked' WHERE code=? AND kind='paid_pending'", (code,))
+    c.execute("UPDATE tickets SET status='revoked', proof_img=NULL, proof_mime='' "
+              "WHERE code=? AND kind='paid_pending'", (code,))
     c.commit()
+
+
+def purge_old_proofs() -> int:
+    """Удаляем скрины/PDF билетов: после конца мероприятия +24ч (приватность).
+    Сам билет остаётся, стирается только файл-пруф."""
+    c = conn()
+    cutoff = now() - 24 * 3600
+    cur = c.execute(
+        """UPDATE tickets SET proof_img=NULL, proof_mime='' WHERE proof_img IS NOT NULL
+           AND event_id IN (
+             SELECT id FROM events
+             WHERE (CASE WHEN ends_at>0 THEN ends_at ELSE starts_at + 21600 END) < ?
+           )""",
+        (cutoff,),
+    )
+    c.commit()
+    return cur.rowcount
 
 
 def get_cover(event_id: int) -> bytes | None:
@@ -548,8 +566,10 @@ def set_ticket_status(code: str, status: str) -> None:
 
 
 def approve_ticket(code: str) -> None:
+    """Подтверждение оплаты. Скрин больше не нужен — стираем сразу (приватность)."""
     c = conn()
-    c.execute("UPDATE tickets SET kind='paid' WHERE code=? AND kind='paid_pending'", (code,))
+    c.execute("UPDATE tickets SET kind='paid', proof_img=NULL, proof_mime='' "
+              "WHERE code=? AND kind='paid_pending'", (code,))
     c.commit()
 
 
