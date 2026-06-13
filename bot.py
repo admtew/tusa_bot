@@ -73,6 +73,20 @@ async def check_subscribed(bot: Bot, channel: str, user_id: int) -> bool:
         return True
 
 
+async def bot_is_admin(bot: Bot, channel: str) -> bool:
+    """Является ли бот админом канала (нужно для проверки подписок)."""
+    channel = (channel or "").lstrip("@")
+    if not channel:
+        return False
+    try:
+        me = await bot.get_me()
+        member = await bot.get_chat_member(chat_id=f"@{channel}", user_id=me.id)
+        return member.status in ("administrator", "creator")
+    except Exception as e:
+        log.info("bot_is_admin(%s) -> no access: %s", channel, e)
+        return False
+
+
 @router.message(CommandStart(deep_link=True))
 async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> None:
     user = message.from_user

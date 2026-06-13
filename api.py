@@ -827,6 +827,20 @@ async def h_gate(request: web.Request):
     return web.json_response({"subscribed": ok, "channel": config.REQUIRED_CHANNEL})
 
 
+async def h_channel_check(request: web.Request):
+    """Проверка: добавлен ли бот админом в канал (для входа за подписку/друзей)."""
+    me = request["user"]["id"]  # noqa: F841 (нужна авторизация)
+    body = await request.json()
+    channel = (body.get("channel") or "").strip().lstrip("@")
+    if not channel:
+        return web.json_response({"ok": False, "error": "Пусто"}, status=400)
+    from bot import bot_is_admin
+    ok = await bot_is_admin(request.app["bot"], channel)
+    bu = request.app.get("bot_username") or (await request.app["bot"].get_me()).username
+    request.app["bot_username"] = bu
+    return web.json_response({"bot_admin": ok, "channel": channel, "bot": bu})
+
+
 async def h_health(request: web.Request):
     """Проверка живости + где лежит база и сколько в ней данных (для контроля Volume)."""
     try:
@@ -917,6 +931,7 @@ def make_web_app(bot) -> web.Application:
         web.get("/api/cities", h_cities),
         web.get("/api/meta", h_meta),
         web.get("/api/gate", h_gate),
+        web.post("/api/channel/check", h_channel_check),
         web.post("/api/events", h_create_event),
         web.get("/api/events/{id}", h_event),
         web.post("/api/events/{id}/claim_free", h_claim_free),

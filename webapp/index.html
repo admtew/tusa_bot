@@ -986,11 +986,19 @@ function renderCreate(){
         <div class="field-hint" style="margin-top:8px;line-height:1.4">Бот подтянет тарифы прямо из qtickets и сам поймает оплату — нужен подключённый qtickets в профиле.</div>
       </div>
 
-    <div class="field-grid">
-      <div class="field"><div class="field-lab"><span class="mono">FREE ЗА ДРУЗЕЙ</span><span class="field-hint">0 = выкл</span></div>
-        <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" inputmode="numeric" value="${F.refs_needed}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
-      <div class="field"><div class="field-lab"><span class="mono">КАНАЛ</span><span class="field-hint">подписка для входа</span></div>
-        <input class="input" placeholder="mychannel" value="${esc(F.channel)}" oninput="FORM.channel=this.value"></div>
+    <div class="ref-card" style="margin:0 18px 18px">
+      <div class="ref-title">Вход за репост / приглашения <span class="field-hint" style="font-family:var(--sans)">(free)</span></div>
+      <div class="ref-sub" style="margin-bottom:12px">Гость проходит бесплатно, если подпишется на твой канал и приведёт N друзей по своей ссылке. 0 друзей = достаточно просто подписки.</div>
+      <div class="field-grid" style="padding:0">
+        <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ДРУЗЕЙ ДЛЯ FREE</span><span class="field-hint">0 = выкл</span></div>
+          <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" inputmode="numeric" value="${F.refs_needed}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
+        <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ТВОЙ КАНАЛ</span><span class="field-hint">без @</span></div>
+          <input class="input" id="f-channel" placeholder="andrey_music" value="${esc(F.channel)}" oninput="FORM.channel=this.value.replace('@','')"></div>
+      </div>
+      <div style="height:10px"></div>
+      <button class="btn btn-ghost" style="width:100%" onclick="checkChannel()">Проверить бота в канале</button>
+      <div id="chan-status"></div>
+      <div class="field-hint" style="margin-top:8px;line-height:1.45">⚠️ Чтобы бот проверял подписку, добавь его <b>администратором</b> своего канала. Иначе условие не сработает.</div>
     </div>
 
     <div class="field"><div class="field-lab"><span class="mono">ГОРОД</span></div>
@@ -1001,6 +1009,21 @@ function renderCreate(){
   </div>`;
 }
 function cancelEdit(){ EDIT_ID=null; FORM=blankForm(); go('profile'); }
+async function checkChannel(){
+  const ch = ((document.getElementById('f-channel')||{}).value || FORM.channel || '').replace('@','').trim();
+  const box = document.getElementById('chan-status');
+  if(!ch){ toast('Сначала впиши канал',false); return; }
+  box.innerHTML = '<div class="field-hint" style="margin-top:8px">Проверяю…</div>';
+  try{
+    const r = await api('/api/channel/check',{method:'POST',body:JSON.stringify({channel:ch})});
+    if(r.bot_admin){
+      box.innerHTML = `<div class="field-hint" style="margin-top:8px;color:#2ecc71">✓ Бот админ в @${esc(ch)} — проверка подписки работает.</div>`;
+      haptic();
+    } else {
+      box.innerHTML = `<div class="lock-note" style="margin-top:8px">${I.lock(15)}<span>Бот пока не админ в <b>@${esc(ch)}</b>. Открой канал → Управление → Администраторы → добавь <b>@${esc(r.bot||BOT)}</b> и нажми «Проверить» снова.</span></div>`;
+    }
+  }catch(e){ box.innerHTML = `<div class="field-hint" style="margin-top:8px">${esc(e.message)}</div>`; }
+}
 function setCover(k){ FORM.cover=k; FORM.cover_data=''; renderCreate(); }
 function stepCap(d){ FORM.capacity=Math.max(0,(FORM.capacity||0)+d); document.getElementById('f-cap').value=FORM.capacity; }
 function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); document.getElementById('f-refs').value=FORM.refs_needed; }
