@@ -105,12 +105,14 @@ def event_json(e, me_id: int | None = None) -> dict:
         "channel": e["channel"], "age_limit": e["age_limit"],
         "cover": e["cover"], "city": e["city"], "genre": e["genre"],
         "taken": taken,
-        "sold_out": bool(e["capacity"] and taken >= e["capacity"]),
+        "sold_out": bool((e["capacity"] and taken >= e["capacity"])
+                         or ("soldout" in e.keys() and e["soldout"])),
         "is_mine": me_id == e["org_id"],
         "org_id": e["org_id"],
         "status": e["status"],
         "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
         "featured": bool(e["featured_until"] and e["featured_until"] > int(time.time())) if "featured_until" in e.keys() else False,
+        "soldout_flag": bool(e["soldout"]) if "soldout" in e.keys() else False,
         "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
         "cover_ver": e["created_at"],   # версия для обхода кэша картинок
         "photos": db.event_photo_count(e["id"]),
@@ -291,6 +293,18 @@ async def h_edit_event(request: web.Request):
         await _notify_admins_new(request.app["bot"], eid, e["title"], org,
                                  warn="✏️ Изменённое событие — перепроверь")
     return web.json_response({"ok": True, "status": status})
+
+
+async def h_soldout(request: web.Request):
+    """Отметить событие распроданным / снова в продаже (владелец или админ)."""
+    me = request["user"]["id"]
+    eid = int(request.match_info["id"])
+    body = await request.json()
+    val = bool(body.get("soldout"))
+    force = me in config.ADMIN_IDS
+    if not db.set_soldout(eid, me, val, force=force):
+        return web.json_response({"error": "Это не твоё событие"}, status=403)
+    return web.json_response({"ok": True, "soldout": val})
 
 
 async def h_delete_event(request: web.Request):
@@ -887,6 +901,7 @@ def make_web_app(bot) -> web.Application:
         web.get("/photo/{id}/{idx}", h_photo),
         web.get("/api/events", h_events),
         web.post("/api/events/{id}/edit", h_edit_event),
+        web.post("/api/events/{id}/soldout", h_soldout),
         web.post("/api/events/{id}/delete", h_delete_event),
         web.post("/api/events/{id}/reschedule", h_reschedule_event),
         web.post("/api/events/{id}/broadcast", h_broadcast),

@@ -1178,6 +1178,7 @@ function renderMine(mine){
           <span class="mycard-num">${p.taken}${p.capacity?'/'+p.capacity:''}</span></div>
         <div class="mycard-actions">
           <button class="btn btn-ghost sm" onclick="editEvent(${p.id})">Изменить</button>
+          ${live?`<button class="btn btn-ghost sm" onclick="toggleSoldout(${p.id},${p.soldout_flag?1:0})">${p.soldout_flag?'Снова в продаже':'Распродано'}</button>`:''}
           <button class="btn btn-ghost sm" onclick="openGuests(${p.id})">Гости</button>
           <button class="btn btn-ghost sm" onclick="openScanner(${p.id})">Сканер</button>
           ${live?`<button class="btn btn-ghost sm" onclick="shareEventById(${p.id},'${esc(p.title)}')">${I.share(15,'var(--text-2)')}</button>`:''}
@@ -1189,6 +1190,11 @@ function renderMine(mine){
   }).join('')}
   <button class="btn btn-ghost" onclick="go('create')">${I.plus(16,'var(--text-2)')} Создать ещё party</button>
   </div>`;
+}
+async function toggleSoldout(id, currently){
+  try{ await api('/api/events/'+id+'/soldout',{method:'POST',body:JSON.stringify({soldout:!currently})});
+    haptic(); toast(currently?'Снова в продаже':'Отмечено «распродано»'); renderProfile(); }
+  catch(e){ toast(e.message,false); }
 }
 async function deleteEvent(id, title){
   const go2 = function(){ api('/api/events/'+id+'/delete',{method:'POST',body:'{}'})

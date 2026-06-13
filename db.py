@@ -132,6 +132,8 @@ def init() -> None:
         "ALTER TABLE tickets ADD COLUMN proof_mime TEXT NOT NULL DEFAULT ''",
         # платное промо: до какого времени событие в топе афиши (0 = не продвигается)
         "ALTER TABLE events ADD COLUMN featured_until INTEGER NOT NULL DEFAULT 0",
+        # ручная отметка «распродано» (работает для любого события, в т.ч. внешних)
+        "ALTER TABLE events ADD COLUMN soldout INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             c.execute(ddl)
@@ -576,6 +578,18 @@ def list_events(upcoming_only: bool = True, city: str | None = None) -> list[sql
 def set_featured(event_id: int, until: int) -> bool:
     c = conn()
     cur = c.execute("UPDATE events SET featured_until=? WHERE id=?", (int(until), event_id))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def set_soldout(event_id: int, org_id: int, val: bool, force: bool = False) -> bool:
+    """Отметить событие распроданным/снова в продаже. force=True для админа."""
+    c = conn()
+    if force:
+        cur = c.execute("UPDATE events SET soldout=? WHERE id=?", (1 if val else 0, event_id))
+    else:
+        cur = c.execute("UPDATE events SET soldout=? WHERE id=? AND org_id=?",
+                        (1 if val else 0, event_id, org_id))
     c.commit()
     return cur.rowcount > 0
 
