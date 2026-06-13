@@ -394,6 +394,8 @@ async def h_claim_free(request: web.Request):
     e = db.get_event(event_id)
     if not e or e["status"] != "active":
         return web.json_response({"error": "Туса не найдена"}, status=404)
+    if e["org_id"] == me:
+        return web.json_response({"error": "Это твоё событие"}, status=400)
     if db.get_user_ticket(event_id, me):
         return web.json_response({"error": "У тебя уже есть билет 😉"}, status=400)
     if e["capacity"] and db.tickets_count(event_id) >= e["capacity"]:
@@ -431,6 +433,8 @@ async def h_claim_paid(request: web.Request):
     e = db.get_event(event_id)
     if not e or e["status"] != "active":
         return web.json_response({"error": "Событие не найдено"}, status=404)
+    if e["org_id"] == me:
+        return web.json_response({"error": "Это твоё событие"}, status=400)
     if db.get_user_ticket(event_id, me):  # антидубль: один билет на человека
         return web.json_response({"error": "У тебя уже есть заявка/билет на это событие"}, status=400)
     body = await request.json()
@@ -562,9 +566,13 @@ async def h_health(request: web.Request):
         events = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
         tickets = c.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
         users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        persistent = config.DB_PATH.startswith("/data")
+        import os
+        data_dir_exists = os.path.isdir("/data")
+        persistent = config.DB_PATH.startswith("/data") and data_dir_exists
         return web.json_response({
-            "ok": True, "db_path": config.DB_PATH, "persistent_volume": persistent,
+            "ok": True, "db_path": config.DB_PATH,
+            "data_dir_exists": data_dir_exists,         # виден ли смонтированный Volume
+            "persistent_volume": persistent,
             "events": events, "tickets": tickets, "users": users,
         })
     except Exception as e:

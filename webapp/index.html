@@ -574,7 +574,7 @@ async function openDetail(id){
   const pending = hasTicket && e.my_ticket.kind==='paid_pending';
 
   let refBlock = '';
-  if(e.refs_needed>0 && !hasTicket && !e.sold_out){
+  if(e.refs_needed>0 && !hasTicket && !e.sold_out && !e.is_mine){
     const pct = Math.min(100, Math.round(e.my_refs/e.refs_needed*100));
     refBlock = `<div class="ref-card">
       <div class="ref-title">Free-проходка за друзей</div>
@@ -591,7 +591,8 @@ async function openDetail(id){
       <a class="btn btn-ghost" style="width:100%" href="https://t.me/${esc(e.channel)}" target="_blank">Подписаться на @${esc(e.channel)}</a>`;
   }
   let cta;
-  if(pending) cta = `<button class="btn btn-have cta-go" disabled>⏳ Ждём подтверждения оплаты</button>`;
+  if(e.is_mine) cta = `<button class="btn btn-have cta-go" onclick="closeDetail();go('profile')">${I.user(18,'var(--text-1)')} Это твоё событие</button>`;
+  else if(pending) cta = `<button class="btn btn-have cta-go" disabled>⏳ Ждём подтверждения оплаты</button>`;
   else if(hasTicket && e.my_ticket.status==='used') cta = `<button class="btn btn-have cta-go" disabled>Билет использован</button>`;
   else if(hasTicket) cta = `<button class="btn btn-have cta-go" onclick="closeDetail();go('tickets')">${I.check(18)} Билет получен · показать</button>`;
   else if(e.sold_out) cta = `<button class="btn btn-soldout cta-go" disabled>Мест нет</button>`;
@@ -599,7 +600,8 @@ async function openDetail(id){
   else if(e.refs_needed>0 && e.my_refs<e.refs_needed) cta = `<button class="btn btn-primary cta-go" onclick="shareRef('${e.ref_link}','${esc(e.title)}')">Позвать друзей ${I.arrow()}</button>`;
   else cta = `<button class="btn btn-primary cta-go" onclick="claimFree(${e.id})">Получить билет ${I.arrow()}</button>`;
 
-  const paidExtra = (!hasTicket && !e.sold_out && e.pay_url)
+  // организатору не показываем «я купил / получить билет» и реф-блок на своём событии
+  const paidExtra = (!e.is_mine && !hasTicket && !e.sold_out && e.pay_url)
     ? `<div style="padding:10px 18px 14px"><button class="btn btn-ghost" style="width:100%" onclick="claimPaid(${e.id})">Я уже купил билет — отметить</button>
        <div class="field-hint" style="text-align:center;margin-top:8px">организатор подтвердит, и QR появится в «Билетах»</div></div>` : '<div style="height:14px"></div>';
 
