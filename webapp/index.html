@@ -23,7 +23,7 @@
 /* светлая тема (переключатель в профиле) */
 body[data-theme="light"]{
   --bg:#F2EEE6; --surface:#FFFFFF; --surface-2:#EAE4D9;
-  --line:rgba(22,18,12,0.10); --line-2:rgba(22,18,12,0.17);
+  --line:rgba(237,231,219,0.09); --line-2:rgba(237,231,219,0.15);
   --text-0:#161310; --text-1:#46433c; --text-2:#79756b; --text-3:#a8a499;
   --head-bg:rgba(242,238,230,0.82); --bar-bg:rgba(242,238,230,0.92);
 }
@@ -117,7 +117,7 @@ input,textarea,select{font-family:inherit;}
 .pill-day{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:0.8px;padding:4px 7px;border-radius:6px;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);color:#fff;border:1px solid rgba(255,255,255,0.18);}
 .pill-price.small,.pill-live.small{font-size:9.5px;padding:4px 7px;}
 .pill-live.small{letter-spacing:0.8px;}
-.gcard-title{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:-0.4px;margin:0 0 4px;line-height:1.04;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.gcard-title{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:-0.4px;margin:0 0 4px;line-height:1.04;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .gcard-date{font-family:var(--mono);font-size:10px;letter-spacing:0.4px;color:var(--text-2);margin-bottom:3px;}
 .gcard-loc{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--text-2);}
 .feed.grid .pcard:nth-child(n){animation-delay:0s;}
@@ -135,8 +135,8 @@ input,textarea,select{font-family:inherit;}
 /* tabbar */
 .tabbar{flex-shrink:0;display:flex;align-items:center;justify-content:space-around;padding:9px 12px calc(9px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--bar-bg);backdrop-filter:blur(24px);position:relative;z-index:20;}
 .tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 12px;flex:1;}
-.tab-lab{font-size:10.5px;color:var(--text-3);font-weight:500;text-transform:lowercase;}
-.tab.on .tab-lab{color:var(--text-0);}
+.tab-lab{font-size:10.5px;color:var(--text-3);font-weight:500;text-transform:lowercase;transition:color 0.25s ease;}
+.tab.on .tab-lab{color:#F2EEE6;}
 .tab-ic{display:flex;align-items:center;justify-content:center;height:24px;transition:transform .15s cubic-bezier(.2,.8,.2,1);}
 .tab:active .tab-ic{transform:scale(.82);}
 .tab.tapped .tab-ic{animation:tabPop .34s cubic-bezier(.34,1.56,.64,1);}
