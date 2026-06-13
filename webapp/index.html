@@ -565,7 +565,7 @@ function cardEditorial(e){
       <div class="pcard-title">${esc(e.title)}</div>
       <div class="pcard-sub">
         <span class="loc">${I.pin()} ${CITY===ALL_CITIES?esc(e.city)+(e.area?' · '+esc(e.area):''):(esc(e.area)||'место уточняется')}</span>
-        <span class="loc">${I.users()} идут ${e.taken}</span>
+        ${e.genre?`<span class="loc">${esc(e.genre)}</span>`:''}
       </div>
     </div></button>`;
 }
@@ -707,8 +707,7 @@ async function openOrgProfile(id){
         <div class="pstat"><div class="pstat-n">${o.events_count}</div><span class="pstat-l">событий</span></div>
         <span class="pstat-div"></span>
         <div class="pstat"><div class="pstat-n">${o.followers}</div><span class="pstat-l">подписчиков</span></div>
-        <span class="pstat-div"></span>
-        <div class="pstat"><div class="pstat-n">${o.total_guests}</div><span class="pstat-l">гостей</span></div>
+        ${o.is_admin_view?`<span class="pstat-div"></span><div class="pstat"><div class="pstat-n">${o.total_guests}</div><span class="pstat-l">гостей</span></div>`:''}
         ${o.is_admin_view?`<span class="pstat-div"></span><div class="pstat"><div class="pstat-n" style="${o.total_reports>0?'color:#e74c3c':''}">${o.total_reports||0}</div><span class="pstat-l">жалоб</span></div>`:''}
       </div>
       ${!o.is_self?`<button class="btn ${o.following?'btn-ghost':'btn-primary'}" style="width:100%;margin-top:14px" id="follow-btn" onclick="toggleFollow(${o.id},${o.following})">${o.following?'Вы подписаны ✓':'Подписаться на организатора'}</button>
@@ -724,7 +723,7 @@ async function openOrgProfile(id){
           <div class="mycard-body">
             <div class="mycard-date">${f.dow} ${f.date} · ${esc(e.city)} ${statusBadge(e.status)}${(o.is_admin_view&&e.reports>0)?' <span class="status-badge bad">🚩'+e.reports+'</span>':''}</div>
             <div class="mycard-title">${esc(e.title)}</div>
-            <div class="mycard-stat"><span class="mycard-num">${e.taken} гостей · ${e.price_text||(e.pay_url?'платно':'free')}</span></div>
+            <div class="mycard-stat"><span class="mycard-num">${o.is_admin_view?e.taken+' гостей · ':''}${e.price_text||(e.pay_url?'платно':'free')}</span></div>
           </div></div>`;
       }).join(''):'<div class="empty-sub" style="text-align:center;margin:30px auto">У организатора пока нет событий.</div>'}
     </div>
