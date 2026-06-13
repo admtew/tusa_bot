@@ -12,6 +12,7 @@ from aiohttp import web
 
 import config
 import db
+import notify
 import qtickets
 
 log = logging.getLogger("tusa.api")
@@ -80,10 +81,13 @@ def event_json(e, me_id: int | None = None) -> dict:
         "sold_out": bool(e["capacity"] and taken >= e["capacity"]),
         "is_mine": me_id == e["org_id"],
         "status": e["status"],
+        "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
         "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
+        "photos": db.event_photo_count(e["id"]),
     }
     org = db.get_user(e["org_id"])
     d["host"] = (org["username"] or org["first_name"] or "host") if org else "host"
+    d["host_verified"] = bool(org and org["is_verified"]) if org else False
     return d
 
 
@@ -144,7 +148,7 @@ def _moderation_on() -> bool:
     return bool(config.ADMIN_IDS)
 
 
-async def _notify_admins_new(bot, event_id: int, title: str, org: str):
+async def _notify_admins_new(bot, event_id: int, title: str, org: str, warn: str | None = None):
     import datetime
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
     e = db.get_event(event_id)
@@ -177,6 +181,8 @@ async def _notify_admins_new(bot, event_id: int, title: str, org: str):
             desc = e["description"][:600]
             lines.append(f"\n{desc}")
         lines.append(f"\nОрганизатор: {org} · ID {event_id}")
+        if warn:
+            lines.insert(1, f"<b>{warn}</b>")
         text = "\n".join(lines)
     else:
         text = f"🆕 <b>На модерацию</b>\n«{title}»\nОрганизатор: {org}\nID: {event_id}"
@@ -199,20 +205,38 @@ async def h_create_event(request: web.Request):
     if body.get("pay_url"):
         body["qt_event_id"] = qtickets.parse_event_id(body["pay_url"])
     cover_img = _decode_cover(body.get("cover_data", ""))
-    status = "pending" if _moderation_on() else "active"
+    # антифрод (этап 5): дубль чужого события
+    dup = db.find_duplicate_event(body["title"], int(body["starts_at"]),
+                                  body.get("area", ""), exclude_org=me)
+    # модерация (этап 1/5): включена если есть админы И организатор не верифицирован
+    moderate = _moderation_on() and not db.is_verified(me)
+    status = "pending" if (moderate or dup) else "active"
     event_id = db.create_event(me, body, status=status, cover_img=cover_img)
+    # доп. фото карусели (этап 6) — массив data-url
+    for i, ph in enumerate((body.get("photos_data") or [])[:5]):
+        img = _decode_cover(ph)
+        if img:
+            db.add_event_photo(event_id, img, i)
     if status == "pending":
         org = request["user"].get("username") or request["user"].get("first_name") or str(me)
-        await _notify_admins_new(request.app["bot"], event_id, body["title"], org)
+        note = "⚠️ ВОЗМОЖНЫЙ ДУБЛЬ чужого события!" if dup else None
+        await _notify_admins_new(request.app["bot"], event_id, body["title"], org, warn=note)
     return web.json_response({"id": event_id, "status": status})
 
 
 async def h_delete_event(request: web.Request):
     me = request["user"]["id"]
     eid = int(request.match_info["id"])
-    if db.delete_event(eid, me):
-        return web.json_response({"ok": True})
-    return web.json_response({"error": "Не получилось — это не твоё событие"}, status=403)
+    e = db.get_event(eid)
+    if not e or e["org_id"] != me:
+        return web.json_response({"error": "Не получилось — это не твоё событие"}, status=403)
+    users = db.event_ticket_users(eid)
+    db.delete_event(eid, me)
+    # этап 3: уведомить всех, кто шёл
+    if users:
+        await notify.broadcast(request.app["bot"], users,
+                               f"❌ Событие «{e['title']}» отменено организатором.")
+    return web.json_response({"ok": True})
 
 
 async def h_reschedule_event(request: web.Request):
@@ -220,17 +244,98 @@ async def h_reschedule_event(request: web.Request):
     eid = int(request.match_info["id"])
     body = await request.json()
     new_starts = int(body.get("starts_at") or 0)
+    new_ends = int(body.get("ends_at") or 0)
     if new_starts <= time.time():
         return web.json_response({"error": "Дата должна быть в будущем"}, status=400)
     e = db.get_event(eid)
     if not e or e["org_id"] != me:
         return web.json_response({"error": "Это не твоё событие"}, status=403)
-    status = "pending" if _moderation_on() else "active"
-    db.reschedule_event(eid, me, new_starts, status)
+    users = db.event_ticket_users(eid)
+    moderate = _moderation_on() and not db.is_verified(me)
+    status = "pending" if moderate else "active"
+    db.reschedule_event(eid, me, new_starts, status, new_ends)
+    import datetime
+    when = datetime.datetime.fromtimestamp(new_starts).strftime("%d.%m %H:%M")
+    if users:
+        await notify.broadcast(request.app["bot"], users,
+                               f"🗓 Событие «{e['title']}» перенесено на {when}.")
     if status == "pending":
         org = request["user"].get("username") or request["user"].get("first_name") or str(me)
         await _notify_admins_new(request.app["bot"], eid, e["title"] + " (перенос)", org)
     return web.json_response({"ok": True, "status": status})
+
+
+async def h_broadcast(request: web.Request):
+    """Этап 3: организатор шлёт сообщение всем участникам своего события."""
+    me = request["user"]["id"]
+    eid = int(request.match_info["id"])
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    reason = (body.get("reason") or "").strip()
+    e = db.get_event(eid)
+    if not e or e["org_id"] != me:
+        return web.json_response({"error": "Это не твоё событие"}, status=403)
+    if not text:
+        return web.json_response({"error": "Пустое сообщение"}, status=400)
+    users = db.event_ticket_users(eid)
+    msg = f"📣 <b>{e['title']}</b>\n{text}"
+    if reason:
+        msg += f"\n\n<i>Причина: {reason}</i>"
+    sent = await notify.broadcast(request.app["bot"], users, msg)
+    db.log_action(eid, me, "broadcast", text[:80])
+    return web.json_response({"ok": True, "sent": sent, "total": len(users)})
+
+
+async def h_report_event(request: web.Request):
+    """Этап 5: пожаловаться на событие."""
+    me = request["user"]["id"]
+    eid = int(request.match_info["id"])
+    body = await request.json()
+    e = db.get_event(eid)
+    if not e:
+        return web.json_response({"error": "Событие не найдено"}, status=404)
+    if not db.add_report(eid, me, (body.get("reason") or "")[:200]):
+        return web.json_response({"ok": True, "already": True})
+    cnt = db.report_count(eid)
+    for admin in config.ADMIN_IDS:
+        try:
+            await request.app["bot"].send_message(
+                admin, f"🚩 Жалоба на «{e['title']}» (ID {eid}). Всего жалоб: {cnt}.")
+        except Exception:
+            pass
+    return web.json_response({"ok": True})
+
+
+async def h_org_log(request: web.Request):
+    """Этап 4: история действий организатора."""
+    me = request["user"]["id"]
+    rows = db.org_log(me)
+    return web.json_response([
+        {"action": r["action"], "detail": r["detail"], "title": r["title"],
+         "at": r["created_at"]} for r in rows
+    ])
+
+
+async def h_my_history(request: web.Request):
+    """Этап 4: прошедшие/посещённые события гостя."""
+    me = request["user"]["id"]
+    rows = db.user_past_events(me)
+    return web.json_response([
+        {"id": r["id"], "title": r["title"], "starts_at": r["starts_at"], "city": r["city"],
+         "cover": r["cover"], "ticket_status": r["ticket_status"], "kind": r["kind"]}
+        for r in rows
+    ])
+
+
+async def h_photo(request: web.Request):
+    """Доп. фото карусели (публично)."""
+    eid = int(request.match_info["id"])
+    idx = int(request.match_info["idx"])
+    img = db.get_event_photo(eid, idx)
+    if not img:
+        return web.Response(status=404)
+    return web.Response(body=img, content_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 async def h_cover(request: web.Request):
@@ -319,16 +424,49 @@ async def h_claim_free(request: web.Request):
 
 
 async def h_claim_paid(request: web.Request):
-    """«Я купил билет» — заявка, организатор подтверждает в панели."""
+    """«Я купил билет» (этап 2): заявка + скрин/PDF → орг одобряет/отклоняет в боте."""
     me = request["user"]["id"]
     event_id = int(request.match_info["id"])
     e = db.get_event(event_id)
     if not e or e["status"] != "active":
-        return web.json_response({"error": "Туса не найдена"}, status=404)
-    if db.get_user_ticket(event_id, me):
+        return web.json_response({"error": "Событие не найдено"}, status=404)
+    if db.get_user_ticket(event_id, me):  # антидубль: один билет на человека
+        return web.json_response({"error": "У тебя уже есть заявка/билет на это событие"}, status=400)
+    body = await request.json()
+    proof = _decode_cover(body.get("proof_data", ""))
+    mime = "application/pdf" if (body.get("proof_data", "").startswith("data:application/pdf")) else "image/jpeg"
+    code = db.create_pending_with_proof(event_id, me, proof, mime)
+    if not code:
         return web.json_response({"error": "Заявка уже есть"}, status=400)
-    code = db.create_ticket(event_id, me, "paid_pending")
+    # уведомляем организатора: новый гость + файл + кнопки
+    if proof:
+        await _notify_org_new_guest(request.app["bot"], e, request["user"], code)
     return web.json_response({"code": code, "pending": True})
+
+
+async def _notify_org_new_guest(bot, e, user, code: str):
+    from aiogram.types import (InlineKeyboardButton, InlineKeyboardMarkup,
+                               BufferedInputFile)
+    name = user.get("first_name", "Гость")
+    uname = f" @{user['username']}" if user.get("username") else ""
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Одобрить", callback_data=f"tk_ok_{code}"),
+        InlineKeyboardButton(text="🚫 Отклонить", callback_data=f"tk_no_{code}"),
+    ]])
+    caption = (f"🎫 <b>Новый гость</b> на «{e['title']}»\n"
+               f"{name}{uname} (id {user['id']})\nПроверь билет и реши:")
+    proof = db.get_proof(code)
+    try:
+        if proof and proof[1] == "application/pdf":
+            await bot.send_document(e["org_id"], BufferedInputFile(proof[0], "ticket.pdf"),
+                                    caption=caption, reply_markup=kb)
+        elif proof:
+            await bot.send_photo(e["org_id"], BufferedInputFile(proof[0], "ticket.jpg"),
+                                 caption=caption, reply_markup=kb)
+        else:
+            await bot.send_message(e["org_id"], caption, reply_markup=kb)
+    except Exception as ex:
+        log.warning("notify org new guest failed: %s", ex)
 
 
 async def h_my_tickets(request: web.Request):
@@ -339,8 +477,9 @@ async def h_my_tickets(request: web.Request):
         reveal = t["starts_at"] - time.time() <= config.ADDRESS_REVEAL_HOURS * 3600
         out.append({
             "code": t["code"], "kind": t["kind"], "status": t["status"],
-            "title": t["title"], "starts_at": t["starts_at"], "area": t["area"],
-            "age_limit": t["age_limit"], "cover": t["cover"],
+            "event_id": t["event_id"], "event_status": t["event_status"],
+            "title": t["title"], "starts_at": t["starts_at"], "ends_at": t["ends_at"],
+            "area": t["area"], "age_limit": t["age_limit"], "cover": t["cover"],
             "address": t["address"] if reveal else None,
             # билет через qtickets: настоящий билет выдаёт qtickets, наш QR не нужен
             "qtickets": bool(t["qt_event_id"]),
@@ -415,6 +554,10 @@ async def h_meta(request: web.Request):
     return web.json_response({"bot": app["bot_username"]})
 
 
+async def h_health(request: web.Request):
+    return web.json_response({"ok": True})
+
+
 async def h_index(request: web.Request):
     return web.FileResponse(WEBAPP_DIR / "index.html")
 
@@ -465,10 +608,14 @@ def make_web_app(bot) -> web.Application:
     app["bot"] = bot
     app.add_routes([
         web.get("/", h_index),
+        web.get("/health", h_health),
         web.get("/cover/{id}", h_cover),
+        web.get("/photo/{id}/{idx}", h_photo),
         web.get("/api/events", h_events),
         web.post("/api/events/{id}/delete", h_delete_event),
         web.post("/api/events/{id}/reschedule", h_reschedule_event),
+        web.post("/api/events/{id}/broadcast", h_broadcast),
+        web.post("/api/events/{id}/report", h_report_event),
         web.get("/api/cities", h_cities),
         web.get("/api/meta", h_meta),
         web.post("/api/events", h_create_event),
@@ -478,6 +625,8 @@ def make_web_app(bot) -> web.Application:
         web.get("/api/events/{id}/guests", h_guests),
         web.get("/api/me/tickets", h_my_tickets),
         web.get("/api/me/events", h_my_events),
+        web.get("/api/me/history", h_my_history),
+        web.get("/api/me/log", h_org_log),
         web.post("/api/approve", h_approve),
         web.post("/api/scan", h_scan),
         web.get("/api/qtickets/status", h_qtickets_status),

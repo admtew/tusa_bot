@@ -11,10 +11,12 @@ _conn: sqlite3.Connection | None = None
 def conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
-        _conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
+        _conn = sqlite3.connect(config.DB_PATH, check_same_thread=False, timeout=30)
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("PRAGMA foreign_keys=ON")
+        _conn.execute("PRAGMA busy_timeout=30000")  # ждать блокировку, а не падать
+        _conn.execute("PRAGMA synchronous=NORMAL")
     return _conn
 
 
@@ -74,9 +76,37 @@ def init() -> None:
             created_at  INTEGER NOT NULL,
             UNIQUE(event_id, referred_id)          -- одного человека нельзя засчитать дважды
         );
+
+        -- история действий организаторов (этап 4)
+        CREATE TABLE IF NOT EXISTS event_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id   INTEGER NOT NULL,
+            org_id     INTEGER NOT NULL,
+            action     TEXT NOT NULL,             -- create|edit|cancel|reschedule|time|broadcast
+            detail     TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        );
+
+        -- доп. фото событий, карусель (этап 6)
+        CREATE TABLE IF NOT EXISTS event_photos (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            idx      INTEGER NOT NULL DEFAULT 0,
+            img      BLOB NOT NULL
+        );
+
+        -- жалобы на события (этап 5)
+        CREATE TABLE IF NOT EXISTS reports (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id   INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            reason     TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            UNIQUE(event_id, user_id)
+        );
         """
     )
-    # мягкие миграции для старых баз
+    # мягкие миграции для старых баз (идемпотентны)
     for ddl in (
         "ALTER TABLE events ADD COLUMN cover TEXT NOT NULL DEFAULT 'ember'",
         "ALTER TABLE events ADD COLUMN city TEXT NOT NULL DEFAULT 'Москва'",
@@ -85,9 +115,28 @@ def init() -> None:
         "ALTER TABLE users ADD COLUMN qtickets_token TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE tickets ADD COLUMN qt_order TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE events ADD COLUMN cover_img BLOB",
+        # этап 1
+        "ALTER TABLE events ADD COLUMN ends_at INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN verified_at INTEGER",
+        # этап 2: пруф оплаты (скрин/PDF) для ручного флоу
+        "ALTER TABLE tickets ADD COLUMN proof_img BLOB",
+        "ALTER TABLE tickets ADD COLUMN proof_mime TEXT NOT NULL DEFAULT ''",
     ):
         try:
             c.execute(ddl)
+        except sqlite3.OperationalError:
+            pass
+    # индексы под нагрузку
+    for idx in (
+        "CREATE INDEX IF NOT EXISTS idx_events_status_start ON events(status, starts_at)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_event ON tickets(event_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_log_event ON event_log(event_id)",
+        "CREATE INDEX IF NOT EXISTS idx_photos_event ON event_photos(event_id, idx)",
+    ):
+        try:
+            c.execute(idx)
         except sqlite3.OperationalError:
             pass
     c.commit()
@@ -130,13 +179,14 @@ def create_event(org_id: int, data: dict, status: str = "active",
                   cover_img: bytes | None = None) -> int:
     c = conn()
     cur = c.execute(
-        """INSERT INTO events(org_id,title,description,starts_at,area,address,
+        """INSERT INTO events(org_id,title,description,starts_at,ends_at,area,address,
            price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,qt_event_id,
            cover_img,status,created_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             org_id,
             data["title"], data.get("description", ""), int(data["starts_at"]),
+            int(data.get("ends_at") or 0),
             data.get("area", ""), data.get("address", ""),
             data.get("price_text", ""), data.get("pay_url", ""),
             int(data.get("capacity") or 0), int(data.get("refs_needed") or 0),
@@ -149,7 +199,137 @@ def create_event(org_id: int, data: dict, status: str = "active",
         ),
     )
     c.commit()
-    return cur.lastrowid
+    eid = cur.lastrowid
+    log_action(eid, org_id, "create", data.get("title", ""))
+    return eid
+
+
+# ---------- статусы / авто-past (этап 1) ----------
+
+def _event_end(e) -> int:
+    """Время фактического окончания: ends_at или старт + 6ч по умолчанию."""
+    return e["ends_at"] if e["ends_at"] else e["starts_at"] + 6 * 3600
+
+
+def mark_past_events() -> int:
+    """Активные события, у которых вышло время, переводим в past (не удаляем)."""
+    c = conn()
+    cur = c.execute(
+        """UPDATE events SET status='past'
+           WHERE status='active'
+             AND (CASE WHEN ends_at>0 THEN ends_at ELSE starts_at + 21600 END) < ?""",
+        (now(),),
+    )
+    c.commit()
+    return cur.rowcount
+
+
+# ---------- верификация организатора (этап 1/5) ----------
+
+def set_verified(user_id: int, verified: bool) -> None:
+    c = conn()
+    c.execute("UPDATE users SET is_verified=?, verified_at=? WHERE tg_id=?",
+              (1 if verified else 0, now() if verified else None, user_id))
+    c.commit()
+
+
+def is_verified(user_id: int) -> bool:
+    r = conn().execute("SELECT is_verified FROM users WHERE tg_id=?", (user_id,)).fetchone()
+    return bool(r and r["is_verified"])
+
+
+# ---------- история действий (этап 4) ----------
+
+def log_action(event_id: int, org_id: int, action: str, detail: str = "") -> None:
+    c = conn()
+    c.execute(
+        "INSERT INTO event_log(event_id,org_id,action,detail,created_at) VALUES(?,?,?,?,?)",
+        (event_id, org_id, action, detail or "", now()),
+    )
+    c.commit()
+
+
+def org_log(org_id: int, limit: int = 50) -> list[sqlite3.Row]:
+    return conn().execute(
+        """SELECT l.*, e.title FROM event_log l LEFT JOIN events e ON e.id=l.event_id
+           WHERE l.org_id=? ORDER BY l.id DESC LIMIT ?""",
+        (org_id, limit),
+    ).fetchall()
+
+
+def user_past_events(user_id: int) -> list[sqlite3.Row]:
+    """Посещённые/прошедшие события гостя (для истории профиля)."""
+    return conn().execute(
+        """SELECT e.id, e.title, e.starts_at, e.city, e.cover, t.status AS ticket_status, t.kind
+           FROM tickets t JOIN events e ON e.id=t.event_id
+           WHERE t.user_id=? AND t.status!='revoked'
+             AND (e.status='past' OR e.status='cancelled' OR t.status='used')
+           ORDER BY e.starts_at DESC""",
+        (user_id,),
+    ).fetchall()
+
+
+# ---------- участники события для рассылок (этап 3) ----------
+
+def event_ticket_users(event_id: int) -> list[int]:
+    """tg_id всех, у кого активный билет на событие (идут)."""
+    rows = conn().execute(
+        "SELECT DISTINCT user_id FROM tickets WHERE event_id=? AND status='active' AND kind!='paid_pending'",
+        (event_id,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+# ---------- доп. фото (этап 6) ----------
+
+def add_event_photo(event_id: int, img: bytes, idx: int) -> None:
+    c = conn()
+    c.execute("INSERT INTO event_photos(event_id, idx, img) VALUES(?,?,?)", (event_id, idx, img))
+    c.commit()
+
+
+def event_photo_count(event_id: int) -> int:
+    return conn().execute(
+        "SELECT COUNT(*) FROM event_photos WHERE event_id=?", (event_id,)
+    ).fetchone()[0]
+
+
+def get_event_photo(event_id: int, idx: int) -> bytes | None:
+    r = conn().execute(
+        "SELECT img FROM event_photos WHERE event_id=? AND idx=? LIMIT 1", (event_id, idx)
+    ).fetchone()
+    return r[0] if r else None
+
+
+# ---------- жалобы и антидубль (этап 5) ----------
+
+def add_report(event_id: int, user_id: int, reason: str) -> bool:
+    c = conn()
+    try:
+        c.execute("INSERT INTO reports(event_id,user_id,reason,created_at) VALUES(?,?,?,?)",
+                  (event_id, user_id, reason or "", now()))
+        c.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def report_count(event_id: int) -> int:
+    return conn().execute(
+        "SELECT COUNT(*) FROM reports WHERE event_id=?", (event_id,)
+    ).fetchone()[0]
+
+
+def find_duplicate_event(title: str, starts_at: int, area: str, exclude_org: int) -> sqlite3.Row | None:
+    """Похожее событие другого организатора (совпадение названия, ~времени и места)."""
+    return conn().execute(
+        """SELECT * FROM events
+           WHERE status IN ('active','pending') AND org_id != ?
+             AND lower(title)=lower(?) AND lower(area)=lower(?)
+             AND ABS(starts_at-?) < 7200
+           LIMIT 1""",
+        (exclude_org, title, area, int(starts_at)),
+    ).fetchone()
 
 
 def set_event_status(event_id: int, status: str) -> None:
@@ -159,21 +339,58 @@ def set_event_status(event_id: int, status: str) -> None:
 
 
 def delete_event(event_id: int, org_id: int) -> bool:
-    """Мягкое удаление: только владелец."""
+    """Мягкое удаление (отмена): только владелец. История сохраняется."""
     c = conn()
     cur = c.execute("UPDATE events SET status='cancelled' WHERE id=? AND org_id=?",
                     (event_id, org_id))
     c.commit()
+    if cur.rowcount > 0:
+        log_action(event_id, org_id, "cancel")
     return cur.rowcount > 0
 
 
-def reschedule_event(event_id: int, org_id: int, new_starts: int, new_status: str) -> bool:
-    """Перенос даты владельцем. new_status='pending' если включена модерация."""
+def reschedule_event(event_id: int, org_id: int, new_starts: int, new_status: str,
+                     new_ends: int = 0) -> bool:
+    """Перенос даты/времени владельцем. new_status='pending' если включена модерация."""
     c = conn()
-    cur = c.execute("UPDATE events SET starts_at=?, status=? WHERE id=? AND org_id=?",
-                    (int(new_starts), new_status, event_id, org_id))
+    cur = c.execute("UPDATE events SET starts_at=?, ends_at=?, status=? WHERE id=? AND org_id=?",
+                    (int(new_starts), int(new_ends or 0), new_status, event_id, org_id))
     c.commit()
+    if cur.rowcount > 0:
+        log_action(event_id, org_id, "reschedule",
+                   time.strftime("%d.%m %H:%M", time.localtime(new_starts)))
     return cur.rowcount > 0
+
+
+# ---------- ручной флоу с пруфом (этап 2) ----------
+
+def create_pending_with_proof(event_id: int, user_id: int, img: bytes | None,
+                              mime: str) -> str | None:
+    if get_user_ticket(event_id, user_id):
+        return None
+    code = uuid.uuid4().hex
+    c = conn()
+    c.execute(
+        """INSERT INTO tickets(code,event_id,user_id,kind,proof_img,proof_mime,created_at)
+           VALUES(?,?,?,'paid_pending',?,?,?)""",
+        (code, event_id, user_id, img, mime or "", now()),
+    )
+    c.commit()
+    return code
+
+
+def get_proof(code: str) -> tuple[bytes, str] | None:
+    r = conn().execute("SELECT proof_img, proof_mime FROM tickets WHERE code=?", (code,)).fetchone()
+    if r and r["proof_img"]:
+        return r["proof_img"], (r["proof_mime"] or "image/jpeg")
+    return None
+
+
+def reject_ticket(code: str) -> None:
+    """Отклонение заявки: билет revoked (для гостя — тишина)."""
+    c = conn()
+    c.execute("UPDATE tickets SET status='revoked' WHERE code=? AND kind='paid_pending'", (code,))
+    c.commit()
 
 
 def get_cover(event_id: int) -> bytes | None:
@@ -294,10 +511,10 @@ def create_ticket(event_id: int, user_id: int, kind: str) -> str:
 
 def user_tickets(user_id: int) -> list[sqlite3.Row]:
     return conn().execute(
-        """SELECT t.*, e.title, e.starts_at, e.area, e.address, e.age_limit, e.cover,
-                  e.qt_event_id, e.pay_url
+        """SELECT t.*, e.title, e.starts_at, e.ends_at, e.area, e.address,
+                  e.age_limit, e.cover, e.qt_event_id, e.pay_url, e.status AS event_status
            FROM tickets t JOIN events e ON e.id = t.event_id
-           WHERE t.user_id=? AND t.status!='revoked' AND e.status='active'
+           WHERE t.user_id=? AND t.status!='revoked' AND e.status IN ('active','past')
            ORDER BY e.starts_at ASC""",
         (user_id,),
     ).fetchall()

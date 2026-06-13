@@ -278,6 +278,32 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 @keyframes toastIn{from{transform:translate(-50%,16px);opacity:0;}to{transform:translate(-50%,0);opacity:1;}}
 .loading{padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:12px;letter-spacing:1px;}
 
+/* skeleton */
+@keyframes shimmer{0%{background-position:-400px 0;}100%{background-position:400px 0;}}
+.sk{background:linear-gradient(90deg,var(--surface) 25%,var(--surface-2) 50%,var(--surface) 75%);background-size:800px 100%;animation:shimmer 1.3s infinite;border-radius:10px;}
+.sk-card{margin-bottom:28px;}
+.sk-cover{width:100%;aspect-ratio:4/5;border-radius:18px;margin-bottom:13px;}
+.sk-line{height:16px;margin-bottom:9px;} .sk-line.w70{width:70%;} .sk-line.w40{width:40%;}
+
+/* carousel */
+.carousel{margin:0 0 16px;}
+.carousel-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:16px;}
+.carousel-track::-webkit-scrollbar{display:none;}
+.carousel-slide{flex:0 0 100%;aspect-ratio:16/10;scroll-snap-align:center;background-size:cover;background-position:center;border-radius:16px;}
+.carousel-dots{display:flex;justify-content:center;gap:6px;margin-top:8px;}
+.cdot{width:6px;height:6px;border-radius:50%;background:var(--line-2);transition:.2s;}
+.cdot.on{background:var(--accent);width:18px;border-radius:99px;}
+
+/* статус-плашки */
+.status-line{text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:.5px;padding:10px;border-radius:12px;margin-bottom:6px;}
+.status-line.past{background:var(--surface);color:var(--text-2);}
+.status-line.bad{background:rgba(231,76,60,.14);color:#e74c3c;}
+.btn-link{background:none;color:var(--text-3);font-size:12.5px;text-decoration:underline;}
+
+/* glass-билет */
+.ticket.glass{background:linear-gradient(135deg,rgba(255,61,90,.10),rgba(124,92,255,.08)),var(--surface);border:1px solid var(--line-2);box-shadow:0 8px 30px -14px rgba(0,0,0,.7);}
+.ticket.dim{opacity:.55;}
+
 /* плавность появления контента */
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .screen-head,.feed,.ticket-list,.my-list,.empty,.profile-head,.seg{animation:fadeUp .26s cubic-bezier(.2,.8,.2,1);}
@@ -340,6 +366,22 @@ const fmt = ts => { const d=new Date(ts*1000); return {
 const priceLabel = e => e.price_text ? esc(e.price_text) : 'FREE';
 const covCls = c => 'cov cov-' + (COVERS.indexOf(c)>=0?c:'ember');
 const firstWord = t => esc((t||'').split(' ')[0]);
+const hhmm = ts => { const d=new Date(ts*1000); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+const timeRange = e => e.ends_at ? hhmm(e.starts_at)+' — '+hhmm(e.ends_at) : hhmm(e.starts_at);
+/* скелетон-загрузка вместо пустого экрана */
+function skeleton(kind){
+  const card = '<div class="sk-card"><div class="sk sk-cover"></div><div class="sk sk-line w70"></div><div class="sk sk-line w40"></div></div>';
+  if(kind==='feed') return '<div style="padding:18px">'+card+card+'</div>';
+  return '<div style="padding:18px">'+card+'</div>';
+}
+function initCarousel(){
+  const tr=document.getElementById('ctrack'); if(!tr) return;
+  const dots=document.querySelectorAll('#carousel .cdot');
+  tr.addEventListener('scroll',function(){
+    const i=Math.round(tr.scrollLeft/tr.clientWidth);
+    dots.forEach((d,j)=>d.classList.toggle('on',j===i));
+  },{passive:true});
+}
 
 /* иконки */
 const I = {
@@ -442,7 +484,7 @@ function plural(n){ const a=n%10,b=n%100;
   return 'вечеринок'; }
 
 async function renderFeed(){
-  $screen.innerHTML = '<div class="loading">ЗАГРУЗКА…</div>';
+  $screen.innerHTML = skeleton('feed');
   const cityParam = (CITY && CITY!==ALL_CITIES) ? CITY : '';
   let feed;
   try { feed = await api('/api/events?city='+encodeURIComponent(cityParam)); }
@@ -517,7 +559,7 @@ async function openDetail(id){
   closeDetail();
   const ov = document.createElement('div');
   ov.className = 'overlay'; ov.id = 'detail-ov';
-  ov.innerHTML = '<div class="loading">ЗАГРУЗКА…</div>';
+  ov.innerHTML = '<div style="padding:18px">'+skeleton('one')+'</div>';
   $overlays.appendChild(ov);
   let e;
   try { e = await api('/api/events/'+id); }
@@ -571,14 +613,22 @@ async function openDetail(id){
       </div>
     </div>
     <div class="detail-body">
+      ${e.photos>0?`<div class="carousel" id="carousel">
+        <div class="carousel-track" id="ctrack">
+          <div class="carousel-slide ${covCls(e.cover)}" ${coverStyle(e)}></div>
+          ${Array.from({length:e.photos}).map((_,i)=>`<div class="carousel-slide" style="background-image:url(/photo/${e.id}/${i})"></div>`).join('')}
+        </div>
+        <div class="carousel-dots">${Array.from({length:e.photos+1}).map((_,i)=>`<span class="cdot${i===0?' on':''}"></span>`).join('')}</div>
+      </div>`:''}
       <div class="date-strip">
         <div class="date-cell">${I.cal()}<div><span class="ds-big">${f.dow} ${f.date}</span><span class="ds-small">${f.year}</span></div></div>
         <div class="date-div"></div>
-        <div class="date-cell">${I.clock()}<div><span class="ds-big">${f.time}</span><span class="ds-small">начало</span></div></div>
+        <div class="date-cell">${I.clock()}<div><span class="ds-big">${timeRange(e)}</span><span class="ds-small">${e.ends_at?'начало — конец':'начало'}</span></div></div>
       </div>
+      ${e.status==='past'?`<div class="status-line past">Событие прошло</div>`:e.status==='cancelled'?`<div class="status-line bad">Событие отменено</div>`:''}
       <div class="host-row">
         ${avatar(e.host,36)}
-        <div class="host-meta"><div class="host-name">@${esc(e.host)}</div><div class="host-role">организатор</div></div>
+        <div class="host-meta"><div class="host-name">@${esc(e.host)}${e.host_verified?' <span style="color:#3aa0ff">✔︎</span>':''}</div><div class="host-role">${e.host_verified?'проверенный организатор':'организатор'}</div></div>
         ${e.is_mine?`<button class="btn btn-ghost sm" onclick="openGuests(${e.id})">Гости</button>`:''}
       </div>
       ${e.description?`<p class="detail-desc">${esc(e.description)}</p>`:''}
@@ -603,9 +653,17 @@ async function openDetail(id){
       ${cta}
     </div>
     ${paidExtra}
+    ${!e.is_mine?`<div style="text-align:center;padding:0 0 16px"><button class="btn-link" onclick="reportEvent(${e.id})">Пожаловаться на событие</button></div>`:''}
   </div>`;
+  initCarousel();
 }
 function closeDetail(){ const d=document.getElementById('detail-ov'); if(d) d.remove(); }
+async function reportEvent(id){
+  const send=function(reason){ api('/api/events/'+id+'/report',{method:'POST',body:JSON.stringify({reason:reason||''})})
+    .then(function(){ haptic(); toast('Жалоба отправлена, спасибо'); }).catch(function(e){ toast(e.message,false); }); };
+  if(tg.showConfirm) tg.showConfirm('Пожаловаться на это событие? Модераторы проверят.', function(ok){ if(ok) send(''); });
+  else if(confirm('Пожаловаться?')) send('');
+}
 function shareRef(link, title){
   tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Го на «'+title+'»! Заходи по моей ссылке:'));
 }
@@ -617,9 +675,45 @@ async function claimFree(id){
     haptic(); closeDetail(); toast('Билет получен — он в «Билетах»'); go('tickets'); }
   catch(err){ toast(err.message,false); }
 }
-async function claimPaid(id){
-  try{ await api('/api/events/'+id+'/claim_paid',{method:'POST',body:'{}'});
-    haptic(); toast('Заявка отправлена — организатор подтвердит оплату'); closeDetail(); }
+/* ручной флоу: загрузить скрин/PDF билета → заявка организатору */
+function claimPaid(id){
+  const sh=document.createElement('div'); sh.className='sheet'; sh.id='proof-sheet';
+  sh.innerHTML=`
+    <div class="sheet-head"><div class="sheet-title">Подтвердить оплату</div>
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
+    <div class="sheet-body">
+      <div class="ref-sub" style="margin-bottom:14px">Загрузи скрин или PDF своего билета — организатор проверит и подтвердит, что ты идёшь.</div>
+      <label class="btn btn-ghost" style="width:100%">${I.image(16,'var(--text-1)')} Выбрать файл<input type="file" accept="image/*,application/pdf" style="display:none" onchange="pickProof(this,${id})"></label>
+      <div id="proof-prev" style="margin-top:12px"></div>
+    </div>`;
+  $overlays.appendChild(sh);
+}
+let PROOF_DATA='';
+function pickProof(input,id){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const prev=document.getElementById('proof-prev');
+  const reader=new FileReader();
+  if(file.type==='application/pdf'){
+    reader.onload=function(ev){ PROOF_DATA=ev.target.result;
+      prev.innerHTML='<div class="ref-sub">📄 PDF выбран</div>'+sendProofBtn(id); };
+    reader.readAsDataURL(file); return;
+  }
+  reader.onload=function(ev){ const img=new Image(); img.onload=function(){
+    const max=1100; let w=img.width,h=img.height;
+    if(w>h&&w>max){h=Math.round(h*max/w);w=max;} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    PROOF_DATA=cv.toDataURL('image/jpeg',0.85);
+    prev.innerHTML='<img src="'+PROOF_DATA+'" style="width:100%;border-radius:12px;margin-bottom:10px">'+sendProofBtn(id);
+  }; img.src=ev.target.result; };
+  reader.readAsDataURL(file);
+}
+function sendProofBtn(id){ return '<button class="btn btn-primary" style="width:100%" onclick="sendProof('+id+')">Отправить на проверку</button>'; }
+async function sendProof(id){
+  if(!PROOF_DATA){ toast('Сначала выбери файл',false); return; }
+  try{ await api('/api/events/'+id+'/claim_paid',{method:'POST',body:JSON.stringify({proof_data:PROOF_DATA})});
+    haptic(); PROOF_DATA=''; const s=document.getElementById('proof-sheet'); if(s) s.remove();
+    toast('Отправлено! Организатор проверит билет'); closeDetail(); }
   catch(err){ toast(err.message,false); }
 }
 /* ссылка оплаты с меткой tg_id, чтобы бот сам сопоставил оплату */
@@ -640,18 +734,19 @@ function ticketCard(t, i){
   const st = t.kind==='paid_pending' ? `<span class="ticket-status" style="color:var(--text-2)">⏳ ждём оплату</span>`
     : t.status==='used' ? `<span class="ticket-status" style="color:var(--text-3)">использован</span>`
     : `<span class="ticket-status">${I.check(13)} подтверждён</span>`;
-  return `<button class="ticket" onclick="showQR(${i})">
+  const passed = t.event_status==='past' || t.status==='used';
+  return `<button class="ticket glass${passed?' dim':''}" onclick="showQR(${i})">
     <div class="ticket-cover ${covCls(t.cover)}"><div class="ticket-cover-mark">${firstWord(t.title)}</div></div>
     <div class="ticket-notch top"></div><div class="ticket-notch bottom"></div>
     <div class="ticket-info">
-      <div class="ticket-date">${f.dow} ${f.date} · ${f.time}</div>
+      <div class="ticket-date">${f.dow} ${f.date} · ${timeRange(t)}</div>
       <div class="ticket-title">${esc(t.title)}</div>
       <div class="ticket-loc">${I.pin(13)} ${esc(t.area)}</div>
-      <div class="ticket-foot">${st}<span class="ticket-show">${I.qr()} показать</span></div>
+      <div class="ticket-foot">${st}<span class="ticket-show">${I.qr()} открыть</span></div>
     </div></button>`;
 }
 async function renderTickets(){
-  $screen.innerHTML = '<div class="loading">ЗАГРУЗКА…</div>';
+  $screen.innerHTML = skeleton('feed');
   let ts;
   try { ts = await api('/api/me/tickets'); } catch(e){ $screen.innerHTML=''; toast(e.message,false); return; }
   if(TAB!=='tickets') return;
@@ -697,6 +792,7 @@ function showQR(i){
     ${body}
     <div class="qr-addr">${I.pin(14,'var(--accent)')}<span>${t.address?esc(t.address)+' · '+esc(t.area):esc(t.area)+' · точный адрес придёт перед началом'}</span></div>
     ${pending?'':(isQt?'<div class="qr-note">вход по билету qtickets</div>':'<div class="qr-note">покажи этот код на входе</div>')}
+    ${t.event_id?`<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="this.closest('.modal-wrap').remove();openDetail(${t.event_id})">Открыть событие</button>`:''}
   </div>`;
   document.body.appendChild(wrap);
   if(!pending && !isQt) new QRCode(document.getElementById('qr-target'), {text:t.code, width:190, height:190});
@@ -704,9 +800,9 @@ function showQR(i){
 
 /* ───────── создание ───────── */
 function blankForm(){
-  return { title:'', description:'', date:'', time:'18:00', area:'', address:'', capacity:0,
+  return { title:'', description:'', date:'', time:'18:00', endtime:'', area:'', address:'', capacity:0,
     age_limit:'18+', price_num:'', pay_url:'', refs_needed:0, channel:'', genre:'',
-    cover:'violet', cover_data:'',
+    cover:'violet', cover_data:'', photos_data:[],
     city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва' };
 }
 let FORM = blankForm();
@@ -728,6 +824,13 @@ function renderCreate(){
       ${F.cover_data?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';renderCreate()">Убрать фото, вернуть градиент</button>`:''}
     </div>
 
+    <div class="field"><div class="field-lab"><span class="mono">ЕЩЁ ФОТО</span><span class="field-hint">до 5, карусель в карточке</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${F.photos_data.map((p,i)=>`<div style="position:relative"><img src="${p}" style="width:62px;height:62px;object-fit:cover;border-radius:10px"><button onclick="FORM.photos_data.splice(${i},1);renderCreate()" style="position:absolute;top:-6px;right:-6px;background:var(--bg);border-radius:50%;width:20px;height:20px;border:1px solid var(--line-2)">×</button></div>`).join('')}
+        ${F.photos_data.length<5?`<label class="swatch" style="display:flex;align-items:center;justify-content:center;width:62px;height:62px;opacity:1;border:1px dashed var(--line-2)">${I.plus(18,'var(--text-2)')}<input type="file" accept="image/*" style="display:none" onchange="pickExtraPhoto(this)"></label>`:''}
+      </div>
+    </div>
+
     <div class="field"><div class="field-lab"><span class="mono">НАЗВАНИЕ<span class="req">*</span></span></div>
       <input class="input" maxlength="80" placeholder="Например: NEON PARTY" value="${esc(F.title)}" oninput="FORM.title=this.value;document.getElementById('cov-mark').textContent=(this.value.split(' ')[0]||'NAME')"></div>
 
@@ -737,9 +840,11 @@ function renderCreate(){
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ДАТА<span class="req">*</span></span></div>
         <input class="input" type="date" value="${esc(F.date)}" onchange="FORM.date=this.value"></div>
-      <div class="field"><div class="field-lab"><span class="mono">ВРЕМЯ<span class="req">*</span></span></div>
+      <div class="field"><div class="field-lab"><span class="mono">НАЧАЛО<span class="req">*</span></span></div>
         <input class="input" type="time" value="${esc(F.time)}" onchange="FORM.time=this.value"></div>
     </div>
+    <div class="field"><div class="field-lab"><span class="mono">КОНЕЦ</span><span class="field-hint">необязательно</span></div>
+      <input class="input" type="time" value="${esc(F.endtime)}" onchange="FORM.endtime=this.value"></div>
 
     <div class="field"><div class="field-lab"><span class="mono">РАЙОН / МЕТРО</span><span class="field-hint">видно всем</span></div>
       <input class="input" placeholder="м. Курская" value="${esc(F.area)}" oninput="FORM.area=this.value"></div>
@@ -810,6 +915,23 @@ function pickCover(input){
   };
   reader.readAsDataURL(file);
 }
+function pickExtraPhoto(input){
+  const file = input.files && input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const img = new Image();
+    img.onload = function(){
+      const max = 900; let w=img.width,h=img.height;
+      if(w>h&&w>max){h=Math.round(h*max/w);w=max;} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      FORM.photos_data.push(cv.toDataURL('image/jpeg',0.8));
+      haptic(); renderCreate();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
 function confirmPublish(){
   const F = FORM;
   if(!F.title.trim()){ toast('Дай party название',false); return; }
@@ -822,14 +944,16 @@ async function publish(){
   const F = FORM;
   const starts = Math.floor(new Date(F.date+'T'+F.time).getTime()/1000);
   if(!starts || starts < Date.now()/1000){ toast('Дата уже в прошлом 🙃',false); return; }
+  let ends = 0;
+  if(F.endtime){ ends = Math.floor(new Date(F.date+'T'+F.endtime).getTime()/1000); if(ends<=starts) ends+=86400; }
   const priceText = F.price_num ? (Number(F.price_num).toLocaleString('ru-RU')+' ₽') : '';
   try{
     const r = await api('/api/events',{method:'POST',body:JSON.stringify({
-      title:F.title.trim(), description:F.description, starts_at:starts,
+      title:F.title.trim(), description:F.description, starts_at:starts, ends_at:ends,
       area:F.area, address:F.address, capacity:F.capacity, age_limit:F.age_limit,
       price_text:priceText, pay_url:F.pay_url, refs_needed:F.refs_needed,
       channel:F.channel, genre:F.genre, cover:F.cover, cover_data:F.cover_data,
-      city:F.city||'Москва',
+      photos_data:F.photos_data, city:F.city||'Москва',
     })});
     haptic();
     toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
@@ -842,7 +966,7 @@ async function publish(){
 /* ───────── профиль ───────── */
 let PSEG = 'host';
 async function renderProfile(){
-  $screen.innerHTML = '<div class="loading">ЗАГРУЗКА…</div>';
+  $screen.innerHTML = skeleton('feed');
   let mine=[], ts=[], qt={connected:false};
   try {
     const r = await Promise.all([api('/api/me/events'), api('/api/me/tickets'), api('/api/qtickets/status')]);
@@ -916,6 +1040,7 @@ function renderMine(mine){
           <button class="btn btn-ghost sm" onclick="openGuests(${p.id})">Гости</button>
           <button class="btn btn-ghost sm" onclick="openScanner(${p.id})">Сканер</button>
           ${live?`<button class="btn btn-ghost sm" onclick="shareEventById(${p.id},'${esc(p.title)}')">${I.share(15,'var(--text-2)')}</button>`:''}
+          ${live?`<button class="btn btn-ghost sm" onclick="openBroadcast(${p.id},'${esc(p.title)}')">Рассылка</button>`:''}
           <button class="btn btn-ghost sm" onclick="reschedule(${p.id})">Перенести</button>
           <button class="btn btn-ghost sm" onclick="deleteEvent(${p.id},'${esc(p.title)}')">${I.trash(15,'var(--text-2)')}</button>
         </div>
@@ -959,6 +1084,30 @@ async function doReschedule(id){
     haptic(); const s=document.getElementById('resch-sheet'); if(s) s.remove();
     toast(r.status==='pending'?'Перенесено, ждёт модерации':'Дата изменена'); renderProfile();
   }catch(e){ toast(e.message,false); }
+}
+function openBroadcast(id, title){
+  const sh=document.createElement('div'); sh.className='sheet'; sh.id='bc-sheet';
+  sh.innerHTML=`
+    <div class="sheet-head"><div class="sheet-title">Рассылка гостям</div>
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
+    <div class="sheet-body">
+      <div class="ref-sub" style="margin-bottom:12px">Сообщение получат все, у кого есть билет на «${esc(title)}». Например: о переносе или важных деталях.</div>
+      <textarea class="input textarea" id="bc-text" rows="4" placeholder="Текст сообщения"></textarea>
+      <div style="height:10px"></div>
+      <input class="input" id="bc-reason" placeholder="Причина (необязательно)">
+      <div style="height:14px"></div>
+      <button class="btn btn-primary" style="width:100%" onclick="sendBroadcast(${id})">Отправить всем</button>
+    </div>`;
+  $overlays.appendChild(sh);
+}
+async function sendBroadcast(id){
+  const text=(document.getElementById('bc-text').value||'').trim();
+  const reason=(document.getElementById('bc-reason').value||'').trim();
+  if(!text){ toast('Напиши сообщение',false); return; }
+  try{ const r=await api('/api/events/'+id+'/broadcast',{method:'POST',body:JSON.stringify({text:text,reason:reason})});
+    haptic(); const s=document.getElementById('bc-sheet'); if(s) s.remove();
+    toast('Отправлено: '+r.sent+' из '+r.total); }
+  catch(e){ toast(e.message,false); }
 }
 function renderGoing(ts){
   if(!ts.length) return `<div class="empty">

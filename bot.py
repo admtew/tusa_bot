@@ -206,6 +206,75 @@ async def on_moderation(call, bot: Bot) -> None:
     await call.answer(mark)
 
 
+# ---------- ручной флоу билетов: одобрить/отклонить гостя (этап 2) ----------
+
+@router.callback_query(lambda c: c.data and c.data.startswith(("tk_ok_", "tk_no_")))
+async def on_ticket_decision(call, bot: Bot) -> None:
+    approve = call.data.startswith("tk_ok_")
+    code = call.data[6:]
+    t = db.get_ticket(code)
+    if not t:
+        await call.answer("Заявка не найдена")
+        return
+    if t["org_id"] != call.from_user.id:
+        await call.answer("Это не твоё событие", show_alert=True)
+        return
+    if approve:
+        db.approve_ticket(code)
+        try:
+            await bot.send_message(
+                t["user_id"],
+                f"✅ Вы идёте на «{t['title']}»! Билет — во вкладке «Билеты».",
+                reply_markup=webapp_kb(f"event/{t['event_id']}", "Открыть событие 🎉"),
+            )
+        except Exception:
+            pass
+        mark = "✅ Гость одобрен"
+    else:
+        db.reject_ticket(code)  # тишина для гостя (по ТЗ)
+        mark = "🚫 Отклонено (гостю не сообщаем)"
+    try:
+        cap = call.message.caption or call.message.text or ""
+        if call.message.caption is not None:
+            await call.message.edit_caption(caption=f"{cap}\n\n<b>{mark}</b>")
+        else:
+            await call.message.edit_text(f"{cap}\n\n<b>{mark}</b>")
+    except Exception:
+        pass
+    await call.answer(mark)
+
+
+# ---------- админ: верификация организатора (этап 1/5) ----------
+
+@router.message(Command("verify"))
+async def cmd_verify(message: Message) -> None:
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].lstrip("-").isdigit():
+        await message.answer("Использование: <code>/verify &lt;tg_id&gt;</code> — выдать галочку доверия организатору.")
+        return
+    uid = int(parts[1])
+    db.upsert_user(uid, None, None)
+    db.set_verified(uid, True)
+    await message.answer(f"✅ Организатор {uid} верифицирован — его события публикуются без модерации.")
+    try:
+        await message.bot.send_message(uid, "✅ Тебе выдали галочку доверия! Твои события теперь публикуются сразу.")
+    except Exception:
+        pass
+
+
+@router.message(Command("unverify"))
+async def cmd_unverify(message: Message) -> None:
+    if message.from_user.id not in config.ADMIN_IDS:
+        return
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].lstrip("-").isdigit():
+        return
+    db.set_verified(int(parts[1]), False)
+    await message.answer(f"Галочка у {parts[1]} снята.")
+
+
 # ---------- напоминания ----------
 
 async def send_reminders(bot: Bot) -> None:
@@ -269,12 +338,14 @@ async def main() -> None:
     await site.start()
     log.info("Mini App server on port %s", config.PORT)
 
-    # планировщик: напоминания + опрос оплат qtickets
+    # планировщик: напоминания + опрос qtickets + авто-перевод прошедших в past
     from api import poll_qtickets_payments
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", minutes=5, args=[bot])
     scheduler.add_job(poll_qtickets_payments, "interval", minutes=2, args=[bot])
+    scheduler.add_job(lambda: db.mark_past_events(), "interval", minutes=10)
     scheduler.start()
+    db.mark_past_events()  # разово на старте
 
     log.info("Bot started")
     await dp.start_polling(bot)
