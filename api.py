@@ -40,6 +40,27 @@ def validate_init_data(init_data: str) -> dict | None:
         return None
 
 
+# кэш статуса подписки на обязательный канал (чтобы не дёргать Telegram на каждый запрос)
+_sub_cache: dict[int, tuple[bool, float]] = {}
+SUB_TTL = 300  # сек
+
+
+async def user_subscribed(bot, user_id: int) -> bool:
+    if not config.REQUIRED_CHANNEL:
+        return True
+    hit = _sub_cache.get(user_id)
+    if hit and time.time() - hit[1] < SUB_TTL and hit[0]:
+        return True
+    from bot import check_subscribed
+    ok = await check_subscribed(bot, config.REQUIRED_CHANNEL, user_id)
+    _sub_cache[user_id] = (ok, time.time())
+    return ok
+
+
+# пути, доступные без подписки (сама проверка и статика)
+_GATE_FREE = ("/api/gate", "/api/meta")
+
+
 @web.middleware
 async def auth_middleware(request: web.Request, handler):
     if request.path.startswith("/api/"):
@@ -48,6 +69,12 @@ async def auth_middleware(request: web.Request, handler):
             return web.json_response({"error": "unauthorized"}, status=401)
         db.upsert_user(user["id"], user.get("username"), user.get("first_name"))
         request["user"] = user
+        # шлагбаум: обязательная подписка на канал
+        if config.REQUIRED_CHANNEL and request.path not in _GATE_FREE:
+            if not await user_subscribed(request.app["bot"], user["id"]):
+                return web.json_response(
+                    {"error": "Подпишись на канал, чтобы продолжить",
+                     "need": "subscribe", "channel": config.REQUIRED_CHANNEL}, status=403)
     return await handler(request)
 
 
@@ -773,6 +800,17 @@ async def h_meta(request: web.Request):
     return web.json_response({"bot": app["bot_username"]})
 
 
+async def h_gate(request: web.Request):
+    """Проверка обязательной подписки на канал (свежая, без кэша)."""
+    me = request["user"]["id"]
+    if not config.REQUIRED_CHANNEL:
+        return web.json_response({"subscribed": True})
+    from bot import check_subscribed
+    ok = await check_subscribed(request.app["bot"], config.REQUIRED_CHANNEL, me)
+    _sub_cache[me] = (ok, time.time())
+    return web.json_response({"subscribed": ok, "channel": config.REQUIRED_CHANNEL})
+
+
 async def h_health(request: web.Request):
     """Проверка живости + где лежит база и сколько в ней данных (для контроля Volume)."""
     try:
@@ -854,6 +892,7 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/events/{id}/report", h_report_event),
         web.get("/api/cities", h_cities),
         web.get("/api/meta", h_meta),
+        web.get("/api/gate", h_gate),
         web.post("/api/events", h_create_event),
         web.get("/api/events/{id}", h_event),
         web.post("/api/events/{id}/claim_free", h_claim_free),

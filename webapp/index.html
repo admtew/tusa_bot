@@ -1432,10 +1432,36 @@ function pickCity(name){
   go('feed');
 }
 
+/* ───────── шлагбаум: обязательная подписка ───────── */
+function renderGate(channel){
+  document.querySelector('.tg-head').style.display='none';
+  document.getElementById('tabbar').style.display='none';
+  $screen.innerHTML=`
+    <div class="empty" style="min-height:88vh">
+      <div class="empty-ic" style="width:84px;height:84px">${I.lock(34,'var(--accent)')}</div>
+      <div class="empty-title">подпишись, чтобы войти</div>
+      <div class="empty-sub">AFTERS открыт для подписчиков канала. Подпишись на <b>@${esc(channel)}</b> — там все вечеринки и анонсы.</div>
+      <a class="btn btn-primary" style="width:100%;max-width:300px" href="https://t.me/${esc(channel)}" target="_blank" onclick="setTimeout(checkGate,1200)">Подписаться на канал</a>
+      <div style="height:10px"></div>
+      <button class="btn btn-ghost" style="width:100%;max-width:300px" onclick="checkGate()">Я подписался ✓</button>
+    </div>`;
+}
+async function checkGate(){
+  try{ const r=await api('/api/gate');
+    if(r.subscribed){ haptic(); document.querySelector('.tg-head').style.display=''; document.getElementById('tabbar').style.display=''; startApp(); }
+    else toast('Пока не вижу подписки — подпишись и нажми ещё раз',false);
+  }catch(e){ toast(e.message,false); }
+}
+
 /* ───────── старт ───────── */
-function boot(){
+async function boot(){
   renderTabbar();
   api('/api/meta').then(function(m){ BOT = m.bot; }).catch(function(){});
+  // шлагбаум: проверяем подписку до загрузки приложения
+  try{ const g=await api('/api/gate'); if(!g.subscribed){ renderGate(g.channel||'afterspartyrus'); return; } }catch(e){}
+  startApp();
+}
+function startApp(){
   const h = (location.hash||'').slice(1);
   // если открыли по прямой ссылке на событие (в т.ч. модератор) — город не спрашиваем
   if(h.indexOf('event/')===0){

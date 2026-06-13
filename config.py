@@ -29,6 +29,10 @@ ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "5"))
 # Контакт поддержки (показывается в /support). Поменяй на свой.
 SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@your_support")
 
+# Обязательная подписка на канал для доступа к боту (без @). Пусто = выключено.
+# ВАЖНО: бот должен быть АДМИНОМ этого канала, иначе проверка не работает.
+REQUIRED_CHANNEL: str = os.getenv("REQUIRED_CHANNEL", "afterspartyrus").lstrip("@")
+
 # Админы-модераторы: tg id через запятую (узнать свой — @userinfobot).
 # Если пусто — модерации нет, события публикуются сразу.
 ADMIN_IDS: list[int] = [

@@ -25,11 +25,39 @@ log = logging.getLogger("tusa")
 
 router = Router()
 
+# куда вёл diolink до показа шлагбаума (открыть после подписки)
+_pending_start: dict[int, str] = {}
+
 
 def webapp_kb(path: str = "", text: str = "Открыть party 🎉") -> InlineKeyboardMarkup:
     url = config.WEBAPP_URL + (f"#{path}" if path else "")
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]]
+    )
+
+
+def gate_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Подписаться на канал",
+                              url=f"https://t.me/{config.REQUIRED_CHANNEL}")],
+        [InlineKeyboardButton(text="✅ Я подписался", callback_data="checksub")],
+    ])
+
+
+async def gate_passed(bot: Bot, user_id: int) -> bool:
+    """Доступ только подписчикам обязательного канала."""
+    if not config.REQUIRED_CHANNEL:
+        return True
+    return await check_subscribed(bot, config.REQUIRED_CHANNEL, user_id)
+
+
+async def send_gate(message: Message) -> None:
+    await message.answer(
+        "<b>Почти готово!</b> 🔒\n\n"
+        f"Чтобы пользоваться AFTERS, подпишись на наш канал @{config.REQUIRED_CHANNEL} — "
+        "там все главные вечеринки и анонсы.\n\n"
+        "Подпишись и нажми «Я подписался» 👇",
+        reply_markup=gate_kb(),
     )
 
 
@@ -50,6 +78,11 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
     user = message.from_user
     is_new = db.upsert_user(user.id, user.username, user.first_name)
     payload = command.args or ""
+    if not await gate_passed(bot, user.id):
+        # запомним, куда вёл диплинк, чтобы открыть после подписки
+        _pending_start[user.id] = payload
+        await send_gate(message)
+        return
 
     # --- реферальная ссылка: ref_<event_id>_<referrer_id> ---
     if payload.startswith("ref_"):
@@ -118,9 +151,40 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
 
 
 @router.message(CommandStart())
-async def start_plain(message: Message) -> None:
+async def start_plain(message: Message, bot: Bot) -> None:
     db.upsert_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
+    if not await gate_passed(bot, message.from_user.id):
+        await send_gate(message)
+        return
     await _send_welcome(message)
+
+
+# callback «Я подписался»
+@router.callback_query(lambda c: c.data == "checksub")
+async def on_checksub(call, bot: Bot) -> None:
+    if not await gate_passed(bot, call.from_user.id):
+        await call.answer("Пока не вижу подписки. Подпишись и нажми ещё раз 🙏", show_alert=True)
+        return
+    await call.answer("Готово! Добро пожаловать 🎉")
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    payload = _pending_start.pop(call.from_user.id, "")
+    if payload.startswith("ref_") or payload.startswith("evt_"):
+        try:
+            eid = int(payload.split("_")[-1] if payload.startswith("evt_") else payload.split("_")[1])
+            await bot.send_message(call.from_user.id, "Открываю 👇", reply_markup=webapp_kb(f"event/{eid}"))
+            return
+        except Exception:
+            pass
+    name = call.from_user.first_name or "Привет"
+    await bot.send_message(
+        call.from_user.id,
+        f"<b>{name}, добро пожаловать в AFTERS</b> 🎉\n\n"
+        "Все вечеринки города — в одном месте.\nЖми кнопку ниже 👇",
+        reply_markup=webapp_kb(),
+    )
 
 
 async def _send_welcome(message: Message) -> None:
@@ -159,7 +223,10 @@ async def cmd_support(message: Message) -> None:
 
 
 @router.message(Command("app"))
-async def cmd_app(message: Message) -> None:
+async def cmd_app(message: Message, bot: Bot) -> None:
+    if not await gate_passed(bot, message.from_user.id):
+        await send_gate(message)
+        return
     await message.answer("Все party — внутри 👇", reply_markup=webapp_kb())
 
 
