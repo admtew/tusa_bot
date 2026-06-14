@@ -726,6 +726,42 @@ def create_ticket(event_id: int, user_id: int, kind: str) -> str:
     return code
 
 
+# результаты атомарной выдачи билета
+TICKET_OK = "ok"
+TICKET_DUP = "dup"          # у пользователя уже есть билет
+TICKET_SOLD_OUT = "sold"    # мест больше нет
+
+
+def create_ticket_capped(event_id: int, user_id: int, kind: str,
+                         capacity: int = 0) -> tuple[str, str | None]:
+    """Атомарная выдача билета с учётом лимита мест — защита от перепродажи
+    при наплыве людей. Один SQL-стейтмент: вставка только если COUNT < capacity.
+    capacity=0 — без лимита. Возвращает (статус, код|None)."""
+    code = uuid.uuid4().hex
+    c = conn()
+    try:
+        if capacity and capacity > 0:
+            cur = c.execute(
+                """INSERT INTO tickets(code,event_id,user_id,kind,created_at)
+                   SELECT ?,?,?,?,?
+                   WHERE (SELECT COUNT(*) FROM tickets
+                          WHERE event_id=? AND status!='revoked') < ?""",
+                (code, event_id, user_id, kind, now(), event_id, capacity),
+            )
+        else:
+            cur = c.execute(
+                "INSERT INTO tickets(code,event_id,user_id,kind,created_at) VALUES(?,?,?,?,?)",
+                (code, event_id, user_id, kind, now()),
+            )
+        c.commit()
+    except sqlite3.IntegrityError:
+        # сработал UNIQUE(event_id,user_id) — билет уже есть
+        return TICKET_DUP, None
+    if cur.rowcount == 0:
+        return TICKET_SOLD_OUT, None
+    return TICKET_OK, code
+
+
 def user_tickets(user_id: int) -> list[sqlite3.Row]:
     return conn().execute(
         """SELECT t.*, e.title, e.starts_at, e.ends_at, e.area, e.address,

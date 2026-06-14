@@ -2,6 +2,7 @@
 import asyncio
 import datetime as dt
 import logging
+import time
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
@@ -78,13 +79,29 @@ async def send_gate(message: Message) -> None:
     )
 
 
+# кэш проверки подписки: (channel,user) -> (подписан?, время). Резко снижает
+# число обращений к Telegram при наплыве (открытие карточек, рефералы и т.п.).
+_subcheck_cache: dict[tuple[str, int], tuple[bool, float]] = {}
+_SUBCHECK_TTL = 45  # сек
+
+
 async def check_subscribed(bot: Bot, channel: str, user_id: int) -> bool:
-    """Подписан ли user на @channel. Бот должен быть админом канала."""
+    """Подписан ли user на @channel. Бот должен быть админом канала.
+    Результат кэшируется на ~45с, чтобы не дёргать Telegram на каждый запрос."""
     if not channel:
         return True
+    key = (channel, user_id)
+    hit = _subcheck_cache.get(key)
+    if hit and (time.time() - hit[1]) < _SUBCHECK_TTL:
+        return hit[0]
     try:
         member = await bot.get_chat_member(chat_id=f"@{channel}", user_id=user_id)
-        return member.status in ("member", "administrator", "creator")
+        ok = member.status in ("member", "administrator", "creator")
+        _subcheck_cache[key] = (ok, time.time())
+        # подчищаем кэш, если разросся
+        if len(_subcheck_cache) > 20000:
+            _subcheck_cache.clear()
+        return ok
     except Exception as e:  # бот не админ / канал не найден — не блокируем гостя
         log.warning("check_subscribed(%s, %s) failed: %s", channel, user_id, e)
         return True

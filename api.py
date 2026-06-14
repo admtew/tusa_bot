@@ -816,7 +816,12 @@ async def h_claim_free(request: web.Request):
             status=400,
         )
 
-    code = db.create_ticket(event_id, me, "free")
+    # атомарная выдача с учётом лимита — без перепродажи даже при наплыве
+    status, code = db.create_ticket_capped(event_id, me, "free", e["capacity"] or 0)
+    if status == db.TICKET_SOLD_OUT:
+        return web.json_response({"error": "Мест больше нет 😢"}, status=400)
+    if status == db.TICKET_DUP:
+        return web.json_response({"error": "У тебя уже есть билет 😉"}, status=400)
     return web.json_response({"code": code})
 
 
