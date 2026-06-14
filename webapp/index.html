@@ -184,6 +184,10 @@ input,textarea,select{font-family:inherit;}
 .ds-small{font-family:var(--mono);font-size:10.5px;color:var(--text-3);}
 .date-div{width:1px;height:34px;background:var(--line);}
 .host-row{display:flex;align-items:center;gap:11px;margin:20px 0;}
+.mod-panel{margin:0 0 18px;padding:13px;border:1px solid var(--line-2);border-radius:14px;background:var(--surface);}
+.mod-panel-h{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);display:flex;align-items:center;gap:6px;margin-bottom:10px;}
+.mod-panel-btns{display:flex;flex-wrap:wrap;gap:8px;}
+.mod-panel-btns .btn.sm{flex:0 0 auto;}
 .host-meta{flex:1;min-width:0;}
 .host-name{font-size:14.5px;font-weight:600;}
 .host-role{font-family:var(--mono);font-size:11px;color:var(--text-3);}
@@ -259,6 +263,8 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .profile-id{flex:1;min-width:0;}
 .profile-name{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-0.8px;line-height:1;}
 .profile-handle{font-family:var(--mono);font-size:12px;color:var(--text-2);display:block;margin-top:5px;}
+.id-chip{display:block;margin:18px auto 0;padding:8px 14px;border-radius:100px;background:var(--surface);border:1px solid var(--line);color:var(--text-3);font-family:var(--mono);font-size:11px;letter-spacing:0.3px;}
+.id-chip:active{background:var(--surface-2);}
 .profile-stats{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 8px;margin-top:20px;}
 .pstat{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
 .pstat-n{font-family:var(--display);font-weight:800;font-size:22px;}
@@ -785,6 +791,20 @@ async function openDetail(id){
         <div class="host-meta"><div class="host-name">@${esc(e.host)}${e.host_verified?' <span style="color:#3aa0ff">✔︎</span>':''}</div><div class="host-role">${e.host_verified?'проверенный организатор':'организатор'} · смотреть профиль</div></div>
         ${(e.is_mine||e.is_admin)?`<button class="btn btn-ghost sm" onclick="event.stopPropagation();openGuests(${e.id})">Гости</button>`:''}
       </div>
+      ${(e.is_admin && !e.is_mine)?`<div class="mod-panel">
+        <div class="mod-panel-h">${I.lock(13,'var(--text-3)')} режим модератора</div>
+        <div class="mod-panel-btns">
+          <button class="btn btn-ghost sm" onclick="editEvent(${e.id})">Изменить</button>
+          <button class="btn btn-ghost sm" onclick="toggleSoldout(${e.id},${e.soldout_flag?1:0})">${e.soldout_flag?'Снова в продаже':'Распродано'}</button>
+          <button class="btn btn-ghost sm" onclick="openGuests(${e.id})">Гости</button>
+          <button class="btn btn-ghost sm" onclick="grantTicket(${e.id})">Выдать билет</button>
+          ${e.refs_needed>0?`<button class="btn btn-ghost sm" onclick="setRefs(${e.id})">Друзья</button>`:''}
+          <button class="btn btn-ghost sm" onclick="openBroadcast(${e.id},'${esc(e.title)}')">Рассылка</button>
+          <button class="btn btn-ghost sm" onclick="reschedule(${e.id})">Перенести</button>
+          <button class="btn btn-ghost sm" onclick="openOrgProfile(${e.org_id})">Профиль орга</button>
+          <button class="btn btn-ghost sm" onclick="deleteEvent(${e.id},'${esc(e.title)}')">${I.trash(15,'var(--text-2)')} Снять</button>
+        </div>
+      </div>`:''}
       ${e.description?`<p class="detail-desc">${esc(e.description)}</p>`:''}
       <div class="spec-card">
         <div class="spec"><span class="spec-k">ГОРОД</span><span class="spec-v">${esc(e.city)}</span></div>
@@ -1326,7 +1346,20 @@ async function renderProfile(){
       <button class="seg-opt${PSEG==='going'?' on':''}" onclick="PSEG='going';renderProfile()">Я иду</button>
     </div>
     ${PSEG==='host' ? (verifyCard(qt.verified) + qtCard(qt.connected) + renderMine(mine)) : renderGoing(ts)}
+    <button class="id-chip" onclick="copyMyId()" title="Скопировать">ID: ${ME.id||'—'} · нажми, чтобы скопировать</button>
     <div style="height:24px"></div>`;
+}
+function copyMyId(){
+  const id = String((typeof ME!=='undefined' && ME.id) || '');
+  if(!id) return;
+  const done = ()=>{ haptic(); toast('ID скопирован — отправь его в поддержку'); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(id).then(done).catch(function(){ fallbackCopy(id); done(); });
+  } else { fallbackCopy(id); done(); }
+}
+function fallbackCopy(text){
+  try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }catch(e){}
 }
 function verifyCard(verified){
   if(verified) return `<div class="ref-card" style="margin:14px 16px 0;display:flex;align-items:center;gap:10px">
@@ -1399,14 +1432,20 @@ function renderMine(mine){
   <button class="btn btn-ghost" onclick="go('create')">${I.plus(16,'var(--text-2)')} Создать ещё party</button>
   </div>`;
 }
+function refreshAfterManage(){
+  if(document.getElementById('detail-ov')) closeDetail();
+  if(typeof _feedCache!=='undefined') _feedCache.ts = 0;
+  if(TAB==='profile') renderProfile();
+  else if(TAB==='feed' && typeof renderFeed==='function') renderFeed();
+}
 async function toggleSoldout(id, currently){
   try{ await api('/api/events/'+id+'/soldout',{method:'POST',body:JSON.stringify({soldout:!currently})});
-    haptic(); toast(currently?'Снова в продаже':'Отмечено «распродано»'); renderProfile(); }
+    haptic(); toast(currently?'Снова в продаже':'Отмечено «распродано»'); refreshAfterManage(); }
   catch(e){ toast(e.message,false); }
 }
 async function deleteEvent(id, title){
   const go2 = function(){ api('/api/events/'+id+'/delete',{method:'POST',body:'{}'})
-    .then(function(){ haptic(); toast('Удалено'); renderProfile(); })
+    .then(function(){ haptic(); toast('Удалено'); refreshAfterManage(); })
     .catch(function(e){ toast(e.message,false); }); };
   if(tg.showConfirm) tg.showConfirm('Удалить «'+title+'»? Отменить нельзя.', function(ok){ if(ok) go2(); });
   else if(confirm('Удалить?')) go2();
@@ -1437,8 +1476,64 @@ async function doReschedule(id){
   if(!starts || starts < Date.now()/1000){ toast('Дата в прошлом 🙃',false); return; }
   try{ const r = await api('/api/events/'+id+'/reschedule',{method:'POST',body:JSON.stringify({starts_at:starts})});
     haptic(); const s=document.getElementById('resch-sheet'); if(s) s.remove();
-    toast(r.status==='pending'?'Перенесено, ждёт модерации':'Дата изменена'); renderProfile();
+    toast(r.status==='pending'?'Перенесено, ждёт модерации':'Дата изменена'); refreshAfterManage();
   }catch(e){ toast(e.message,false); }
+}
+/* ── модератор: выдать билет вручную по ID ── */
+function grantTicket(id){
+  const sh = document.createElement('div');
+  sh.className = 'sheet'; sh.id = 'grant-sheet';
+  sh.innerHTML = `
+    <div class="sheet-head"><div class="sheet-title">Выдать билет</div>
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
+    <div class="sheet-body">
+      <div class="ref-sub" style="margin-bottom:14px">ID пользователя берётся из его профиля (внизу — «ID: …»). Пользователь должен хоть раз открыть бота.</div>
+      <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ID ПОЛЬЗОВАТЕЛЯ</span></div>
+        <input class="input" type="number" inputmode="numeric" id="grant-uid" placeholder="например 123456789"></div>
+      <div class="field" style="padding:10px 0 0"><div class="field-lab"><span class="mono">ТИП</span></div>
+        <div class="seg"><button class="seg-opt on" id="grant-free" onclick="this.classList.add('on');document.getElementById('grant-paid').classList.remove('on')">Бесплатный</button>
+          <button class="seg-opt" id="grant-paid" onclick="this.classList.add('on');document.getElementById('grant-free').classList.remove('on')">Платный</button></div></div>
+      <div style="height:14px"></div>
+      <button class="btn btn-primary" style="width:100%" onclick="doGrant(${id})">Выдать билет</button>
+    </div>`;
+  $overlays.appendChild(sh);
+}
+async function doGrant(id){
+  const uid = parseInt(document.getElementById('grant-uid').value||'0',10);
+  if(!uid){ toast('Укажи ID пользователя',false); return; }
+  const kind = document.getElementById('grant-paid').classList.contains('on') ? 'paid' : 'free';
+  try{ await api('/api/admin/ticket/create',{method:'POST',body:JSON.stringify({event_id:id,user_id:uid,kind:kind})});
+    haptic(); const s=document.getElementById('grant-sheet'); if(s) s.remove();
+    toast('Билет выдан — пользователь получит уведомление'); }
+  catch(e){ toast(e.message,false); }
+}
+/* ── модератор: задать счётчик приглашённых ── */
+function setRefs(id){
+  const sh = document.createElement('div');
+  sh.className = 'sheet'; sh.id = 'refs-sheet';
+  sh.innerHTML = `
+    <div class="sheet-head"><div class="sheet-title">Счётчик друзей</div>
+      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
+    <div class="sheet-body">
+      <div class="ref-sub" style="margin-bottom:14px">Задай, сколько приглашённых засчитать пользователю на это событие (итоговое число). Используется, если рефералы не засчитались автоматически.</div>
+      <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ID ПОЛЬЗОВАТЕЛЯ</span></div>
+        <input class="input" type="number" inputmode="numeric" id="refs-uid" placeholder="123456789"></div>
+      <div class="field" style="padding:10px 0 0"><div class="field-lab"><span class="mono">СКОЛЬКО ДРУЗЕЙ</span></div>
+        <input class="input" type="number" inputmode="numeric" id="refs-val" placeholder="например 3"></div>
+      <div style="height:14px"></div>
+      <button class="btn btn-primary" style="width:100%" onclick="doSetRefs(${id})">Сохранить</button>
+    </div>`;
+  $overlays.appendChild(sh);
+}
+async function doSetRefs(id){
+  const uid = parseInt(document.getElementById('refs-uid').value||'0',10);
+  const val = parseInt(document.getElementById('refs-val').value||'0',10);
+  if(!uid){ toast('Укажи ID пользователя',false); return; }
+  if(val<0||isNaN(val)){ toast('Некорректное число',false); return; }
+  try{ const r = await api('/api/admin/refs',{method:'POST',body:JSON.stringify({event_id:id,user_id:uid,value:val})});
+    haptic(); const s=document.getElementById('refs-sheet'); if(s) s.remove();
+    toast('Засчитано приглашённых: '+r.value); }
+  catch(e){ toast(e.message,false); }
 }
 function openBroadcast(id, title){
   const sh=document.createElement('div'); sh.className='sheet'; sh.id='bc-sheet';

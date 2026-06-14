@@ -115,6 +115,14 @@ def init() -> None:
             created_at INTEGER NOT NULL,
             PRIMARY KEY (org_id, user_id)
         );
+
+        -- ручная правка счётчика рефералов модератором (бонус-дельта к подсчёту)
+        CREATE TABLE IF NOT EXISTS referral_bonus (
+            event_id   INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            bonus      INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (event_id, user_id)
+        );
         """
     )
     # мягкие миграции для старых баз (идемпотентны)
@@ -412,10 +420,14 @@ EDITABLE = ("title", "description", "area", "address", "price_text", "pay_url",
 
 
 def update_event(event_id: int, org_id: int, data: dict, status: str,
-                 cover_img: bytes | None = None, set_cover: bool = False) -> bool:
-    """Полное редактирование события владельцем. status — новый статус (pending при модерации)."""
-    e = conn().execute("SELECT * FROM events WHERE id=? AND org_id=?",
-                       (event_id, org_id)).fetchone()
+                 cover_img: bytes | None = None, set_cover: bool = False,
+                 force: bool = False) -> bool:
+    """Полное редактирование события. force=True — модератор правит чужое событие."""
+    if force:
+        e = conn().execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
+    else:
+        e = conn().execute("SELECT * FROM events WHERE id=? AND org_id=?",
+                           (event_id, org_id)).fetchone()
     if not e:
         return False
     sets, args = [], []
@@ -431,20 +443,28 @@ def update_event(event_id: int, org_id: int, data: dict, status: str,
     sets.append("status=?"); args.append(status)
     if set_cover:
         sets.append("cover_img=?"); args.append(cover_img)
-    args += [event_id, org_id]
+    if force:
+        args.append(event_id)
+        where = "WHERE id=?"
+    else:
+        args += [event_id, org_id]
+        where = "WHERE id=? AND org_id=?"
     c = conn()
-    cur = c.execute(f"UPDATE events SET {', '.join(sets)} WHERE id=? AND org_id=?", args)
+    cur = c.execute(f"UPDATE events SET {', '.join(sets)} {where}", args)
     c.commit()
     if cur.rowcount > 0:
         log_action(event_id, org_id, "edit", data.get("title", e["title"]))
     return cur.rowcount > 0
 
 
-def delete_event(event_id: int, org_id: int) -> bool:
-    """Мягкое удаление (отмена): только владелец. История сохраняется."""
+def delete_event(event_id: int, org_id: int, force: bool = False) -> bool:
+    """Мягкое удаление (отмена). force=True — модератор отменяет чужое событие."""
     c = conn()
-    cur = c.execute("UPDATE events SET status='cancelled' WHERE id=? AND org_id=?",
-                    (event_id, org_id))
+    if force:
+        cur = c.execute("UPDATE events SET status='cancelled' WHERE id=?", (event_id,))
+    else:
+        cur = c.execute("UPDATE events SET status='cancelled' WHERE id=? AND org_id=?",
+                        (event_id, org_id))
     c.commit()
     if cur.rowcount > 0:
         log_action(event_id, org_id, "cancel")
@@ -452,11 +472,15 @@ def delete_event(event_id: int, org_id: int) -> bool:
 
 
 def reschedule_event(event_id: int, org_id: int, new_starts: int, new_status: str,
-                     new_ends: int = 0) -> bool:
-    """Перенос даты/времени владельцем. new_status='pending' если включена модерация."""
+                     new_ends: int = 0, force: bool = False) -> bool:
+    """Перенос даты/времени. force=True — модератор переносит чужое событие."""
     c = conn()
-    cur = c.execute("UPDATE events SET starts_at=?, ends_at=?, status=? WHERE id=? AND org_id=?",
-                    (int(new_starts), int(new_ends or 0), new_status, event_id, org_id))
+    if force:
+        cur = c.execute("UPDATE events SET starts_at=?, ends_at=?, status=? WHERE id=?",
+                        (int(new_starts), int(new_ends or 0), new_status, event_id))
+    else:
+        cur = c.execute("UPDATE events SET starts_at=?, ends_at=?, status=? WHERE id=? AND org_id=?",
+                        (int(new_starts), int(new_ends or 0), new_status, event_id, org_id))
     c.commit()
     if cur.rowcount > 0:
         log_action(event_id, org_id, "reschedule",
@@ -842,3 +866,23 @@ def referrals_of(event_id: int, referrer_id: int) -> list[sqlite3.Row]:
         "SELECT * FROM referrals WHERE event_id=? AND referrer_id=?",
         (event_id, referrer_id),
     ).fetchall()
+
+
+def get_referral_bonus(event_id: int, user_id: int) -> int:
+    r = conn().execute(
+        "SELECT bonus FROM referral_bonus WHERE event_id=? AND user_id=?",
+        (event_id, user_id),
+    ).fetchone()
+    return int(r["bonus"]) if r else 0
+
+
+def set_referral_bonus(event_id: int, user_id: int, bonus: int) -> None:
+    """Модераторский бонус к счётчику рефералов (дельта, прибавляется к реальным)."""
+    bonus = max(0, int(bonus))
+    c = conn()
+    c.execute(
+        "INSERT INTO referral_bonus(event_id,user_id,bonus) VALUES(?,?,?) "
+        "ON CONFLICT(event_id,user_id) DO UPDATE SET bonus=excluded.bonus",
+        (event_id, user_id, bonus),
+    )
+    c.commit()

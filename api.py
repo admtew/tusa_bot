@@ -158,6 +158,7 @@ def event_json(e, me_id: int | None = None) -> dict:
         "sold_out": bool((e["capacity"] and taken >= e["capacity"])
                          or ("soldout" in e.keys() and e["soldout"])),
         "is_mine": me_id == e["org_id"],
+        "is_admin": me_id in config.ADMIN_IDS,
         "org_id": e["org_id"],
         "status": e["status"],
         "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
@@ -244,9 +245,9 @@ async def h_event(request: web.Request):
         for r in refs:
             if await check_subscribed(bot, e["channel"], r["referred_id"]):
                 valid_refs += 1
-        data["my_refs"] = valid_refs
+        data["my_refs"] = valid_refs + db.get_referral_bonus(e["id"], me)
     else:
-        data["my_refs"] = len(refs)
+        data["my_refs"] = len(refs) + db.get_referral_bonus(e["id"], me)
 
     data["subscribed"] = await check_subscribed(bot, e["channel"], me)
     data["address"] = e["address"]
@@ -389,7 +390,8 @@ async def h_edit_event(request: web.Request):
     me = request["user"]["id"]
     eid = int(request.match_info["id"])
     e = db.get_event(eid)
-    if not e or e["org_id"] != me:
+    is_admin = me in config.ADMIN_IDS
+    if not e or (e["org_id"] != me and not is_admin):
         return web.json_response({"error": "Это не твоё событие"}, status=403)
     try:
         body = await request.json()
@@ -407,9 +409,12 @@ async def h_edit_event(request: web.Request):
     # обложка: меняем только если прислали новую (set_cover) или явно сбросили
     set_cover = "cover_data" in body
     cover_img = _decode_cover(body.get("cover_data", "")) if body.get("cover_data") else None
-    moderate = _moderation_on() and not db.is_verified(me)
+    # модератор правит без повторной модерации; владельца — по обычным правилам
+    moderate = _moderation_on() and not is_admin and not db.is_verified(me)
     status = "pending" if moderate else "active"
-    ok = db.update_event(eid, me, body, status, cover_img=cover_img, set_cover=set_cover)
+    owner_id = e["org_id"] if is_admin else me
+    ok = db.update_event(eid, owner_id, body, status, cover_img=cover_img,
+                         set_cover=set_cover, force=is_admin)
     if not ok:
         return web.json_response({"error": "Не получилось обновить"}, status=400)
     if status == "pending":
@@ -435,10 +440,11 @@ async def h_delete_event(request: web.Request):
     me = request["user"]["id"]
     eid = int(request.match_info["id"])
     e = db.get_event(eid)
-    if not e or e["org_id"] != me:
+    is_admin = me in config.ADMIN_IDS
+    if not e or (e["org_id"] != me and not is_admin):
         return web.json_response({"error": "Не получилось — это не твоё событие"}, status=403)
     users = db.event_ticket_users(eid)
-    db.delete_event(eid, me)
+    db.delete_event(eid, me, force=is_admin)
     # этап 3: уведомить всех, кто шёл (в фоне)
     if users:
         asyncio.create_task(notify.broadcast(request.app["bot"], users,
@@ -455,12 +461,13 @@ async def h_reschedule_event(request: web.Request):
     if new_starts <= time.time():
         return web.json_response({"error": "Дата должна быть в будущем"}, status=400)
     e = db.get_event(eid)
-    if not e or e["org_id"] != me:
+    is_admin = me in config.ADMIN_IDS
+    if not e or (e["org_id"] != me and not is_admin):
         return web.json_response({"error": "Это не твоё событие"}, status=403)
     users = db.event_ticket_users(eid)
-    moderate = _moderation_on() and not db.is_verified(me)
+    moderate = _moderation_on() and not is_admin and not db.is_verified(me)
     status = "pending" if moderate else "active"
-    db.reschedule_event(eid, me, new_starts, status, new_ends)
+    db.reschedule_event(eid, me, new_starts, status, new_ends, force=is_admin)
     import datetime
     when = datetime.datetime.fromtimestamp(new_starts).strftime("%d.%m %H:%M")
     if users:
@@ -480,7 +487,7 @@ async def h_broadcast(request: web.Request):
     text = (body.get("text") or "").strip()
     reason = (body.get("reason") or "").strip()
     e = db.get_event(eid)
-    if not e or e["org_id"] != me:
+    if not e or (e["org_id"] != me and me not in config.ADMIN_IDS):
         return web.json_response({"error": "Это не твоё событие"}, status=403)
     if not text:
         return web.json_response({"error": "Пустое сообщение"}, status=400)
@@ -800,6 +807,7 @@ async def h_claim_free(request: web.Request):
     else:
         # если канала нет — все рефералы считаются валидными
         valid = len(refs)
+    valid += db.get_referral_bonus(event_id, me)  # модераторский бонус
     if valid < e["refs_needed"]:
         need_more = e["refs_needed"] - valid
         return web.json_response(
@@ -1013,6 +1021,26 @@ async def h_admin_create_ticket(request: web.Request):
     return web.json_response({"ok": True, "code": code})
 
 
+async def h_admin_set_refs(request: web.Request):
+    """Модератор вручную задаёт счётчик приглашённых пользователю на событие.
+    Значение — итоговое число, которое увидит пользователь (бонус = value - реальные)."""
+    _require_admin(request)
+    body = await request.json()
+    event_id = int(body.get("event_id", 0))
+    user_id = int(body.get("user_id", 0))
+    value = int(body.get("value", 0))
+    e = db.get_event(event_id)
+    if not e:
+        return web.json_response({"error": "Событие не найдено"}, status=404)
+    if not db.get_user(user_id):
+        return web.json_response({"error": "Пользователь не найден"}, status=404)
+    real = len(db.referrals_of(event_id, user_id))
+    bonus = max(0, value - real)
+    db.set_referral_bonus(event_id, user_id, bonus)
+    db.log_action(event_id, user_id, "refs_set", str(value))
+    return web.json_response({"ok": True, "value": real + bonus, "real": real, "bonus": bonus})
+
+
 async def h_admin_delete_ticket(request: web.Request):
     """Админ удаляет билет полностью."""
     _require_admin(request)
@@ -1186,6 +1214,7 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/approve", h_approve),
         web.post("/api/scan", h_scan),
         web.post("/api/admin/ticket/create", h_admin_create_ticket),
+        web.post("/api/admin/refs", h_admin_set_refs),
         web.post("/api/admin/ticket/delete", h_admin_delete_ticket),
         web.post("/api/admin/ticket/update", h_admin_update_ticket),
         web.get("/api/qtickets/status", h_qtickets_status),
