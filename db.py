@@ -709,7 +709,7 @@ def user_tickets(user_id: int) -> list[sqlite3.Row]:
                   (e.cover_img IS NOT NULL AND length(e.cover_img)>0) AS has_cover,
                   e.created_at AS cover_ver
            FROM tickets t JOIN events e ON e.id = t.event_id
-           WHERE t.user_id=? AND t.status!='revoked' AND e.status IN ('active','past')
+           WHERE t.user_id=? AND t.status!='revoked' AND e.status='active'
            ORDER BY e.starts_at ASC""",
         (user_id,),
     ).fetchall()
@@ -748,6 +748,57 @@ def approve_ticket(code: str) -> None:
     c.execute("UPDATE tickets SET kind='paid', proof_img=NULL, proof_mime='' "
               "WHERE code=? AND kind='paid_pending'", (code,))
     c.commit()
+
+
+def admin_create_ticket(event_id: int, user_id: int, kind: str = "paid") -> str | None:
+    """Админ вручную создаёт билет для пользователя (обходит все проверки)."""
+    if get_user_ticket(event_id, user_id):
+        return None
+    code = uuid.uuid4().hex
+    c = conn()
+    c.execute(
+        "INSERT INTO tickets(code,event_id,user_id,kind,created_at) VALUES(?,?,?,?,?)",
+        (code, event_id, user_id, kind, now()),
+    )
+    c.commit()
+    return code
+
+
+def admin_delete_ticket(code: str) -> bool:
+    """Админ полностью удаляет билет (hard delete)."""
+    c = conn()
+    cur = c.execute("DELETE FROM tickets WHERE code=?", (code,))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def admin_set_ticket_status(code: str, status: str) -> bool:
+    """Админ меняет статус билета (active/used/revoked)."""
+    c = conn()
+    used_at = now() if status == "used" else None
+    cur = c.execute("UPDATE tickets SET status=?, used_at=? WHERE code=?",
+                    (status, used_at, code))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def admin_set_ticket_kind(code: str, kind: str) -> bool:
+    """Админ меняет тип билета (free/paid/paid_pending)."""
+    c = conn()
+    cur = c.execute("UPDATE tickets SET kind=?, proof_img=NULL, proof_mime='' WHERE code=?",
+                    (kind, code))
+    c.commit()
+    return cur.rowcount > 0
+
+
+def admin_all_tickets(event_id: int) -> list[sqlite3.Row]:
+    """Все билеты события (включая revoked) для админ-панели."""
+    return conn().execute(
+        """SELECT t.*, u.username, u.first_name
+           FROM tickets t JOIN users u ON u.tg_id = t.user_id
+           WHERE t.event_id=? ORDER BY t.created_at ASC""",
+        (event_id,),
+    ).fetchall()
 
 
 def mark_reminded(code: str, field: str) -> None:

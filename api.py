@@ -249,10 +249,8 @@ async def h_event(request: web.Request):
         data["my_refs"] = len(refs)
 
     data["subscribed"] = await check_subscribed(bot, e["channel"], me)
-    # точный адрес видят владелец и модераторы (для проверки), гостям — скрыт
-    if me == e["org_id"] or me in config.ADMIN_IDS:
-        data["address"] = e["address"]
-        data["is_admin_view"] = me in config.ADMIN_IDS and me != e["org_id"]
+    data["address"] = e["address"]
+    data["is_admin"] = me in config.ADMIN_IDS
     app = request.app
     if "bot_username" not in app:
         app["bot_username"] = (await bot.get_me()).username
@@ -866,14 +864,12 @@ async def h_my_tickets(request: web.Request):
     me = request["user"]["id"]
     out = []
     for t in db.user_tickets(me):
-        # точный адрес отдаём только незадолго до начала
-        reveal = t["starts_at"] - time.time() <= config.ADDRESS_REVEAL_HOURS * 3600
         out.append({
             "code": t["code"], "kind": t["kind"], "status": t["status"],
             "event_id": t["event_id"], "event_status": t["event_status"],
             "title": t["title"], "starts_at": t["starts_at"], "ends_at": t["ends_at"],
             "area": t["area"], "age_limit": t["age_limit"], "cover": t["cover"],
-            "address": t["address"] if reveal else None,
+            "address": t["address"],
             # билет через qtickets: настоящий билет выдаёт qtickets, наш QR не нужен
             "qtickets": bool(t["qt_event_id"]),
             "has_cover": bool(t["has_cover"]) if "has_cover" in t.keys() else False,
@@ -923,23 +919,27 @@ async def h_guests(request: web.Request):
     me = request["user"]["id"]
     event_id = int(request.match_info["id"])
     e = db.get_event(event_id)
-    if not e or e["org_id"] != me:
+    is_admin = me in config.ADMIN_IDS
+    if not e or (e["org_id"] != me and not is_admin):
         return web.json_response({"error": "forbidden"}, status=403)
+    guests_fn = db.admin_all_tickets if is_admin else db.event_guests
     out = []
-    for g in db.event_guests(event_id):
+    for g in guests_fn(event_id):
         out.append({
             "code": g["code"], "kind": g["kind"], "status": g["status"],
             "name": g["first_name"], "username": g["username"],
+            "user_id": g["user_id"],
         })
     return web.json_response(out)
 
 
 async def h_approve(request: web.Request):
-    """Организатор подтверждает оплату заявки."""
+    """Организатор или админ подтверждает оплату заявки."""
     me = request["user"]["id"]
     body = await request.json()
     t = db.get_ticket(body.get("code", ""))
-    if not t or t["org_id"] != me:
+    is_admin = me in config.ADMIN_IDS
+    if not t or (t["org_id"] != me and not is_admin):
         return web.json_response({"error": "forbidden"}, status=403)
     db.approve_ticket(t["code"])
     bot = request.app["bot"]
@@ -960,7 +960,8 @@ async def h_scan(request: web.Request):
     t = db.get_ticket(body.get("code", ""))
     if not t:
         return web.json_response({"ok": False, "msg": "Билет не найден ❌"})
-    if t["org_id"] != me:
+    is_admin = me in config.ADMIN_IDS
+    if t["org_id"] != me and not is_admin:
         return web.json_response({"ok": False, "msg": "Это билет не на твою тусу"})
     name = t["first_name"] + (f" (@{t['username']})" if t["username"] else "")
     if t["kind"] == "paid_pending":
@@ -971,6 +972,78 @@ async def h_scan(request: web.Request):
         return web.json_response({"ok": False, "msg": "Билет недействителен ❌"})
     db.set_ticket_status(t["code"], "used")
     return web.json_response({"ok": True, "msg": f"✅ {name} — проходит!"})
+
+
+# ---------- admin god-mode: управление билетами ----------
+
+def _require_admin(request) -> int:
+    me = request["user"]["id"]
+    if me not in config.ADMIN_IDS:
+        raise web.HTTPForbidden(text='{"error":"admin only"}', content_type="application/json")
+    return me
+
+
+async def h_admin_create_ticket(request: web.Request):
+    """Админ вручную выдаёт билет пользователю."""
+    _require_admin(request)
+    body = await request.json()
+    event_id = int(body.get("event_id", 0))
+    user_id = int(body.get("user_id", 0))
+    kind = body.get("kind", "paid")
+    if kind not in ("free", "paid"):
+        return web.json_response({"error": "kind must be free or paid"}, status=400)
+    e = db.get_event(event_id)
+    if not e:
+        return web.json_response({"error": "Событие не найдено"}, status=404)
+    u = db.get_user(user_id)
+    if not u:
+        return web.json_response({"error": "Пользователь не найден"}, status=404)
+    code = db.admin_create_ticket(event_id, user_id, kind)
+    if not code:
+        return web.json_response({"error": "У этого пользователя уже есть билет"}, status=400)
+    # уведомляем пользователя
+    bot = request.app["bot"]
+    try:
+        await bot.send_message(
+            user_id,
+            f"🎟 Модератор выдал тебе билет на «{e['title']}»! Смотри вкладку «Билеты».",
+        )
+    except Exception:
+        pass
+    return web.json_response({"ok": True, "code": code})
+
+
+async def h_admin_delete_ticket(request: web.Request):
+    """Админ удаляет билет полностью."""
+    _require_admin(request)
+    body = await request.json()
+    code = body.get("code", "")
+    t = db.get_ticket(code)
+    if not t:
+        return web.json_response({"error": "Билет не найден"}, status=404)
+    db.admin_delete_ticket(code)
+    return web.json_response({"ok": True})
+
+
+async def h_admin_update_ticket(request: web.Request):
+    """Админ меняет статус и/или тип билета."""
+    _require_admin(request)
+    body = await request.json()
+    code = body.get("code", "")
+    t = db.get_ticket(code)
+    if not t:
+        return web.json_response({"error": "Билет не найден"}, status=404)
+    new_status = body.get("status")
+    new_kind = body.get("kind")
+    if new_status:
+        if new_status not in ("active", "used", "revoked"):
+            return web.json_response({"error": "status: active/used/revoked"}, status=400)
+        db.admin_set_ticket_status(code, new_status)
+    if new_kind:
+        if new_kind not in ("free", "paid", "paid_pending"):
+            return web.json_response({"error": "kind: free/paid/paid_pending"}, status=400)
+        db.admin_set_ticket_kind(code, new_kind)
+    return web.json_response({"ok": True})
 
 
 async def h_meta(request: web.Request):
@@ -1112,6 +1185,9 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/org/{id}/verify", h_org_set_verify),
         web.post("/api/approve", h_approve),
         web.post("/api/scan", h_scan),
+        web.post("/api/admin/ticket/create", h_admin_create_ticket),
+        web.post("/api/admin/ticket/delete", h_admin_delete_ticket),
+        web.post("/api/admin/ticket/update", h_admin_update_ticket),
         web.get("/api/qtickets/status", h_qtickets_status),
         web.post("/api/qtickets/connect", h_qtickets_connect),
         web.post("/api/qtickets/preview", h_qtickets_preview),

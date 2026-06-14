@@ -27,7 +27,7 @@ NEW_ID_THRESHOLD: int = int(os.getenv("NEW_ID_THRESHOLD", "0"))
 ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "5"))
 
 # Контакт поддержки (показывается в /support). Поменяй на свой.
-SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@your_support")
+SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@workersant")
 
 # Обязательная подписка на канал для доступа к боту (без @). Пусто = выключено.
 # ВАЖНО: бот должен быть АДМИНОМ этого канала, иначе проверка не работает.

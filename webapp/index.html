@@ -322,6 +322,13 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .guest-name{font-size:14px;font-weight:500;}
 .guest-st{font-family:var(--mono);font-size:10.5px;color:var(--text-2);margin-top:3px;}
 .approve-btn{padding:8px 13px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;flex-shrink:0;margin-left:10px;}
+.guest-admin-bar{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.admin-sm{padding:5px 9px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--text-1);flex-shrink:0;}
+.admin-sm.danger{border-color:#e74c3c;color:#e74c3c;}
+.admin-sm.ok{border-color:#27ae60;color:#27ae60;}
+.admin-sm.warn{border-color:#f39c12;color:#f39c12;}
+.admin-add-row{display:flex;gap:8px;margin-bottom:14px;}
+.admin-add-row input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--text-1);font-size:13px;font-family:var(--mono);}
 
 /* scanner */
 #reader{border-radius:16px;overflow:hidden;margin:16px;}
@@ -459,6 +466,7 @@ try { CITY = localStorage.getItem('tusa_city'); } catch(e){}
 let TAB = 'feed';
 let FILTER = { date:null, type:'все' };
 let scanner = null;
+let _isAdmin = false;
 
 /* кэш данных для мгновенного переключения табов */
 let _feedCache = { city:null, data:null, ts:0 };
@@ -712,6 +720,7 @@ async function openDetail(id){
   let e;
   try { e = await api('/api/events/'+id); }
   catch(err){ ov.remove(); toast(err.message,false); return; }
+  if(e.is_admin) _isAdmin = true;
   const f = fmt(e.starts_at);
   const left = Math.max(0, e.capacity - e.taken);
   const hasTicket = !!e.my_ticket;
@@ -778,7 +787,7 @@ async function openDetail(id){
       <div class="host-row" onclick="openOrgProfile(${e.org_id})" style="cursor:pointer">
         ${avatar(e.host,36)}
         <div class="host-meta"><div class="host-name">@${esc(e.host)}${e.host_verified?' <span style="color:#3aa0ff">✔︎</span>':''}</div><div class="host-role">${e.host_verified?'проверенный организатор':'организатор'} · смотреть профиль</div></div>
-        ${e.is_mine?`<button class="btn btn-ghost sm" onclick="event.stopPropagation();openGuests(${e.id})">Гости</button>`:''}
+        ${(e.is_mine||e.is_admin)?`<button class="btn btn-ghost sm" onclick="event.stopPropagation();openGuests(${e.id})">Гости</button>`:''}
       </div>
       ${e.description?`<p class="detail-desc">${esc(e.description)}</p>`:''}
       <div class="spec-card">
@@ -795,9 +804,7 @@ async function openDetail(id){
           <div class="ref-sub">Нажми, чтобы скопировать</div></div>
           <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);letter-spacing:1px;user-select:text;-webkit-user-select:text">${esc(e.promo_code)}</div>
         </div></div>`:''}
-      ${e.address
-        ? `<div class="lock-note">${I.lock()}<span>${e.is_admin_view?'Адрес виден тебе как модератору. Гостям он скрыт до начала.':'Адрес виден тебе как организатору. Гостям придёт незадолго до начала.'}</span></div>`
-        : `<div class="lock-note">${I.lock()}<span>Точный адрес придёт в чат с ботом <b>незадолго до начала</b></span></div>`}
+      ${!e.address?`<div class="lock-note">${I.lock()}<span>Адрес уточняется</span></div>`:''}
       ${e.status&&e.status!=='active'?`<div class="lock-note" style="color:#f39c12">${I.spark(15,'#f39c12')}<span>Статус: ${e.status==='pending'?'на модерации':e.status}</span></div>`:''}
       ${subBlock}
       ${refBlock}
@@ -1032,7 +1039,7 @@ function showQR(i){
     <div class="qr-event">${esc(t.title)}</div>
     <div class="qr-when">${f.dow} ${f.date} · ${f.time}</div>
     ${body}
-    <div class="qr-addr">${I.pin(14,'var(--accent)')}<span>${t.address?esc(t.address)+' · '+esc(t.area):esc(t.area)+' · точный адрес придёт перед началом'}</span></div>
+    <div class="qr-addr">${I.pin(14,'var(--accent)')}<span>${t.address?esc(t.address)+' · '+esc(t.area):esc(t.area)}</span></div>
     ${pending?'':(isQt?'<div class="qr-note">вход по билету qtickets</div>':'<div class="qr-note">покажи этот код на входе</div>')}
     ${t.event_id?`<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="this.closest('.modal-wrap').remove();openDetail(${t.event_id})">Открыть событие</button>`:''}
   </div>`;
@@ -1124,9 +1131,8 @@ function renderCreate(){
       <div class="seg" style="flex-wrap:wrap">${CITIES.map(c=>`<button class="seg-opt${F.city===c.name?' on':''}" style="flex:0 0 auto;padding:9px 13px" onclick="FORM.city='${c.name}';renderCreate()">${c.name}</button>`).join('')}</div></div>
     <div class="field"><div class="field-lab"><span class="mono">РАЙОН / МЕТРО</span><span class="field-hint">видно всем</span></div>
       <input class="input" placeholder="м. Курская" value="${esc(F.area)}" oninput="FORM.area=this.value"></div>
-    <div class="field"><div class="field-lab"><span class="mono">ТОЧНЫЙ АДРЕС</span><span class="field-hint">придёт гостям перед началом</span></div>
+    <div class="field"><div class="field-lab"><span class="mono">АДРЕС</span></div>
       <input class="input" placeholder="Басманный пер. 8с1" value="${esc(F.address)}" oninput="FORM.address=this.value"></div>
-    <div class="hint-row" style="display:flex;gap:9px;align-items:center;color:var(--text-2);font-size:12.5px;padding:0 2px"><span>${I.lock(14)}</span><span>Точный адрес скрыт. Гости получат его в «Билетах» перед началом.</span></div>
   </div>`;
 
   // ── ШАГ 3: условия ──
@@ -1474,23 +1480,49 @@ function shareEventById(id, title){
 }
 
 /* ───────── гости ───────── */
+function guestStatusLabel(g){
+  if(g.status==='revoked') return '❌ отозван';
+  if(g.kind==='paid_pending') return '⏳ оплата не подтверждена';
+  if(g.status==='used') return '✅ вошёл';
+  return '🎟 '+(g.kind==='free'?'free':'оплачен');
+}
+function guestAdminBar(g, id){
+  if(!_isAdmin) return '';
+  let btns = '';
+  if(g.kind==='paid_pending') btns += `<button class="admin-sm ok" onclick="adminTicketAction('approve','${g.code}',${id})">Подтвердить</button>`;
+  if(g.status==='active') btns += `<button class="admin-sm warn" onclick="adminTicketAction('revoke','${g.code}',${id})">Отозвать</button>`;
+  if(g.status==='revoked') btns += `<button class="admin-sm ok" onclick="adminTicketAction('restore','${g.code}',${id})">Восстановить</button>`;
+  if(g.status==='used') btns += `<button class="admin-sm warn" onclick="adminTicketAction('unuse','${g.code}',${id})">Снять вход</button>`;
+  if(g.kind!=='paid'&&g.kind!=='paid_pending') btns += `<button class="admin-sm" onclick="adminTicketAction('make_paid','${g.code}',${id})">→ paid</button>`;
+  if(g.kind!=='free') btns += `<button class="admin-sm" onclick="adminTicketAction('make_free','${g.code}',${id})">→ free</button>`;
+  btns += `<button class="admin-sm danger" onclick="adminTicketAction('delete','${g.code}',${id})">Удалить</button>`;
+  return `<div class="guest-admin-bar">${btns}</div>`;
+}
 async function openGuests(id){
   let guests;
   try { guests = await api('/api/events/'+id+'/guests'); } catch(e){ toast(e.message,false); return; }
   const old = document.getElementById('guests-sheet'); if(old) old.remove();
   const sh = document.createElement('div');
   sh.className = 'sheet'; sh.id = 'guests-sheet';
+  const addRow = _isAdmin ? `<div class="admin-add-row">
+    <input id="admin-tg-id" placeholder="Telegram ID пользователя" type="number">
+    <button class="btn btn-primary" style="padding:10px 16px;font-size:13px;white-space:nowrap" onclick="adminAddTicket(${id})">Выдать билет</button>
+  </div>` : '';
   sh.innerHTML = `
-    <div class="sheet-head"><div class="sheet-title">Гостевой список</div>
+    <div class="sheet-head"><div class="sheet-title">Гости${_isAdmin?' (admin)':''}</div>
       <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
     <div class="sheet-body">
+      ${addRow}
       <button class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="this.closest('.sheet').remove();openScanner(${id})">${I.camera()} Сканер на входе</button>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text-3);margin-bottom:10px">Всего: ${guests.length}</div>
       ${guests.length?guests.map(function(g){
-        const st = g.kind==='paid_pending'?'⏳ оплата не подтверждена':(g.status==='used'?'✅ вошёл':'🎟 '+(g.kind==='free'?'free':'оплачен'));
-        return `<div class="guest-row">
-          <div><div class="guest-name">${esc(g.name)} ${g.username?'<span style="color:var(--text-3)">@'+esc(g.username)+'</span>':''}</div>
-          <div class="guest-st">${st}</div></div>
-          ${g.kind==='paid_pending'?`<button class="approve-btn" onclick="approveTicket('${g.code}',${id},this)">Подтвердить</button>`:''}
+        return `<div class="guest-row" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div><div class="guest-name">${esc(g.name)} ${g.username?'<span style="color:var(--text-3)">@'+esc(g.username)+'</span>':''}</div>
+            <div class="guest-st">${guestStatusLabel(g)}${_isAdmin?' · id:'+g.user_id:''}</div></div>
+            ${(!_isAdmin&&g.kind==='paid_pending')?`<button class="approve-btn" onclick="approveTicket('${g.code}',${id},this)">Подтвердить</button>`:''}
+          </div>
+          ${guestAdminBar(g, id)}
         </div>`;
       }).join(''):'<div class="empty-sub" style="text-align:center;margin:30px auto 0">Пока никого — поделись party!</div>'}
     </div>`;
@@ -1501,6 +1533,32 @@ async function approveTicket(code, id, btn){
   try { await api('/api/approve',{method:'POST',body:JSON.stringify({code:code})});
     haptic(); const s=document.getElementById('guests-sheet'); if(s) s.remove(); openGuests(id); }
   catch(e){ toast(e.message,false); btn.disabled=false; }
+}
+async function adminTicketAction(action, code, eventId){
+  try {
+    if(action==='approve') await api('/api/approve',{method:'POST',body:JSON.stringify({code:code})});
+    else if(action==='delete') await api('/api/admin/ticket/delete',{method:'POST',body:JSON.stringify({code:code})});
+    else if(action==='revoke') await api('/api/admin/ticket/update',{method:'POST',body:JSON.stringify({code:code,status:'revoked'})});
+    else if(action==='restore') await api('/api/admin/ticket/update',{method:'POST',body:JSON.stringify({code:code,status:'active'})});
+    else if(action==='unuse') await api('/api/admin/ticket/update',{method:'POST',body:JSON.stringify({code:code,status:'active'})});
+    else if(action==='make_paid') await api('/api/admin/ticket/update',{method:'POST',body:JSON.stringify({code:code,kind:'paid'})});
+    else if(action==='make_free') await api('/api/admin/ticket/update',{method:'POST',body:JSON.stringify({code:code,kind:'free'})});
+    haptic();
+    const s=document.getElementById('guests-sheet'); if(s) s.remove();
+    openGuests(eventId);
+  } catch(e){ toast(e.message,false); }
+}
+async function adminAddTicket(eventId){
+  const inp = document.getElementById('admin-tg-id');
+  const uid = parseInt(inp.value);
+  if(!uid){ toast('Введи Telegram ID',false); return; }
+  try {
+    await api('/api/admin/ticket/create',{method:'POST',body:JSON.stringify({event_id:eventId,user_id:uid,kind:'paid'})});
+    haptic(); toast('Билет выдан!',true);
+    inp.value = '';
+    const s=document.getElementById('guests-sheet'); if(s) s.remove();
+    openGuests(eventId);
+  } catch(e){ toast(e.message,false); }
 }
 
 /* ───────── сканер ───────── */

@@ -271,8 +271,7 @@ async def cmd_faq(message: Message) -> None:
         "❓ <b>Где мой билет?</b>\n"
         "Во вкладке «Билеты» в приложении. Покажи QR-код на входе.\n\n"
         "❓ <b>Зачем добавлять данные?</b>\n"
-        "Данные нужны для оформления билета и напоминаний. "
-        "Точный адрес мероприятия приходит за несколько часов до начала.\n\n"
+        "Данные нужны для оформления билета и напоминаний.\n\n"
         "🔒 <b>Ваши данные в безопасности</b>\n"
         "Мы не передаём ваши данные третьим лицам. Информация используется "
         "только для работы сервиса.\n\n"
@@ -396,7 +395,7 @@ async def on_ticket_decision(call, bot: Bot) -> None:
     if not t:
         await call.answer("Заявка не найдена")
         return
-    if t["org_id"] != call.from_user.id:
+    if t["org_id"] != call.from_user.id and call.from_user.id not in config.ADMIN_IDS:
         await call.answer("Это не твоё событие", show_alert=True)
         return
     if t["kind"] != "paid_pending":  # уже обработано
