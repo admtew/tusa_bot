@@ -360,10 +360,17 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .wiz-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s cubic-bezier(.2,.8,.2,1);}
 .wiz-pane{padding-top:8px;animation:fadeUp .26s cubic-bezier(.2,.8,.2,1);}
 .wiz-pane.no-anim{animation:none;}
-.wiz-cta{position:sticky;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,var(--bg) 26%);}
+.wiz-cta{position:sticky;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,var(--bg) 26%);transition:transform .2s ease,opacity .2s ease;}
 .wiz-back{flex:0 0 auto;}
 .wiz-next{flex:1;}
-.wiz-next.disabled{opacity:0.4;box-shadow:none;}
+/* неактивная кнопка «Далее» — явно серая, не красная */
+.wiz-next.disabled{background:var(--surface-2);color:var(--text-3);box-shadow:none;border:1px solid var(--line);}
+.wiz-next.disabled svg{opacity:0.5;}
+/* пока открыта клавиатура — прячем нижнюю панель и таббар, чтобы не перекрывали поле ввода */
+body.kbd .wiz-cta{transform:translateY(160%);opacity:0;pointer-events:none;}
+body.kbd .tabbar{transform:translateY(140%);}
+/* запас прокрутки, чтобы поле с фокусом всегда уезжало выше клавиатуры */
+.create .input,.create .textarea,.create .step-input{scroll-margin-top:90px;scroll-margin-bottom:300px;}
 .recap{display:flex;gap:13px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 0 18px;}
 .recap-cover{width:60px;height:74px;flex-shrink:0;border-radius:11px;position:relative;overflow:hidden;}
 .recap-cover .cover-preview-mark{font-size:13px;left:7px;bottom:6px;}
@@ -1127,7 +1134,7 @@ const WIZ_STEPS = [{l:'инфо'},{l:'когда'},{l:'условия'}];
 function wizStep(n){ CREATE_STEP=n; $screen.scrollTop=0; renderCreate(); }
 function stepValid(step){
   const F=FORM;
-  if(step===0) return F.title.trim().length>1;
+  if(step===0) return F.title.trim().length>1 && F.description.trim().length>=10;
   if(step===1) return !!(F.date && F.time && (F.city||'').trim());
   return true;
 }
@@ -1139,12 +1146,34 @@ function updateWizNext(){
 // переход на следующий шаг с понятной подсказкой, если чего-то не хватает
 function wizNext(){
   if(!stepValid(CREATE_STEP)){
-    if(CREATE_STEP===0) toast('Впиши название (хотя бы 2 символа)',false);
+    if(CREATE_STEP===0) toast('Заполни название и описание',false);
     else if(CREATE_STEP===1) toast('Укажи дату, время и город',false);
     return;
   }
   wizStep(Math.min(2, CREATE_STEP+1));
 }
+/* ── клавиатура не должна перекрывать поле ввода ── */
+(function setupKeyboardScroll(){
+  if(window.__kbdInit) return; window.__kbdInit = true;
+  let blurTimer = null;
+  function isField(el){ return el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA'); }
+  document.addEventListener('focusin', function(ev){
+    if(!isField(ev.target)) return;
+    clearTimeout(blurTimer);
+    document.body.classList.add('kbd');
+    const el = ev.target;
+    // даём клавиатуре открыться, затем поднимаем поле в видимую зону
+    setTimeout(function(){
+      try{ el.scrollIntoView({block:'center', behavior:'smooth'}); }
+      catch(e){ try{ el.scrollIntoView(); }catch(_){} }
+    }, 280);
+  });
+  document.addEventListener('focusout', function(ev){
+    if(!isField(ev.target)) return;
+    // небольшая задержка: при переходе между полями панель не мигает
+    blurTimer = setTimeout(function(){ document.body.classList.remove('kbd'); }, 250);
+  });
+})();
 function recapCard(F){
   const img = F.cover_data || F.cover_url;
   const st = img ? `style="background-image:url(${img});background-size:cover;background-position:center"` : '';
@@ -1183,8 +1212,8 @@ function renderCreate(){
       </div></div>
     <div class="field"><div class="field-lab"><span class="mono">НАЗВАНИЕ<span class="req">*</span></span></div>
       <input class="input" maxlength="80" placeholder="Например: NEON PARTY" value="${esc(F.title)}" oninput="FORM.title=this.value;var m=document.getElementById('cov-mark');if(m)m.textContent=(this.value.split(' ')[0]||'NAME');updateWizNext()"></div>
-    <div class="field"><div class="field-lab"><span class="mono">ОПИСАНИЕ</span></div>
-      <textarea class="input textarea" rows="4" placeholder="" oninput="FORM.description=this.value">${esc(F.description)}</textarea></div>
+    <div class="field"><div class="field-lab"><span class="mono">ОПИСАНИЕ<span class="req">*</span></span><span class="field-hint">пару слов о вечеринке</span></div>
+      <textarea class="input textarea" rows="4" placeholder="лайнап, дресс-код, что по движу…" oninput="FORM.description=this.value;updateWizNext()">${esc(F.description)}</textarea></div>
   </div>`;
 
   // ── ШАГ 2: когда/где ──
