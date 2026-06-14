@@ -19,6 +19,41 @@ log = logging.getLogger("tusa.api")
 WEBAPP_DIR = Path(__file__).parent / "webapp"
 
 
+# ---------- rate limiter (защита от спама) ----------
+
+class RateLimiter:
+    """Простой in-memory rate limiter: user_id -> [timestamps]."""
+    def __init__(self, max_requests: int = 30, window: int = 60):
+        self._max = max_requests
+        self._window = window
+        self._hits: dict[int, list[float]] = {}
+
+    def check(self, user_id: int) -> bool:
+        """True = разрешено, False = лимит превышен."""
+        now = time.time()
+        hits = self._hits.get(user_id, [])
+        # отсекаем старые
+        hits = [t for t in hits if now - t < self._window]
+        if len(hits) >= self._max:
+            self._hits[user_id] = hits
+            return False
+        hits.append(now)
+        self._hits[user_id] = hits
+        return True
+
+    def cleanup(self):
+        """Периодическая очистка памяти от старых записей."""
+        now = time.time()
+        stale = [uid for uid, hits in self._hits.items()
+                 if not hits or now - hits[-1] > self._window * 2]
+        for uid in stale:
+            del self._hits[uid]
+
+
+_rate = RateLimiter(max_requests=120, window=60)  # 120 запросов/мин на пользователя
+_rate_write = RateLimiter(max_requests=30, window=60)  # 30 записей/мин (create, claim, etc.)
+
+
 # ---------- проверка подлинности initData (подпись Telegram) ----------
 
 def validate_init_data(init_data: str) -> dict | None:
@@ -44,6 +79,10 @@ def validate_init_data(init_data: str) -> dict | None:
 _sub_cache: dict[int, tuple[bool, float]] = {}
 SUB_TTL = 300  # сек
 
+# кэш известных пользователей (чтобы не дёргать БД на каждый запрос)
+_user_cache: dict[int, float] = {}
+_USER_TTL = 120  # сек
+
 
 async def user_subscribed(bot, user_id: int) -> bool:
     if not config.REQUIRED_CHANNEL:
@@ -67,11 +106,22 @@ async def auth_middleware(request: web.Request, handler):
         user = validate_init_data(request.headers.get("X-Init-Data", ""))
         if not user:
             return web.json_response({"error": "unauthorized"}, status=401)
-        db.upsert_user(user["id"], user.get("username"), user.get("first_name"))
+        uid = user["id"]
+        # rate limiting
+        if not _rate.check(uid):
+            return web.json_response({"error": "Слишком много запросов, подожди"}, status=429)
+        # write-rate для мутирующих запросов
+        if request.method == "POST" and not _rate_write.check(uid):
+            return web.json_response({"error": "Слишком частые действия, подожди минуту"}, status=429)
+        # кэш: не писать в БД если юзер уже известен
+        now_t = time.time()
+        if uid not in _user_cache or now_t - _user_cache[uid] > _USER_TTL:
+            db.upsert_user(uid, user.get("username"), user.get("first_name"))
+            _user_cache[uid] = now_t
         request["user"] = user
         # шлагбаум: обязательная подписка на канал
         if config.REQUIRED_CHANNEL and request.path not in _GATE_FREE:
-            if not await user_subscribed(request.app["bot"], user["id"]):
+            if not await user_subscribed(request.app["bot"], uid):
                 return web.json_response(
                     {"error": "Подпишись на канал, чтобы продолжить",
                      "need": "subscribe", "channel": config.REQUIRED_CHANNEL}, status=403)
@@ -116,6 +166,7 @@ def event_json(e, me_id: int | None = None) -> dict:
         "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
         "cover_ver": e["created_at"],   # версия для обхода кэша картинок
         "photos": db.event_photo_count(e["id"]),
+        "promo_code": e["promo_code"] if "promo_code" in e.keys() else "",
     }
     org = db.get_user(e["org_id"])
     d["host"] = (org["username"] or org["first_name"] or "host") if org else "host"
@@ -128,7 +179,42 @@ def event_json(e, me_id: int | None = None) -> dict:
 async def h_events(request: web.Request):
     me = request["user"]["id"]
     city = request.query.get("city") or None
-    return web.json_response([event_json(e, me) for e in db.list_events(city=city)])
+    events = db.list_events(city=city)
+    if not events:
+        return web.json_response([])
+    # batch: 3 запроса вместо 3*N
+    eids = [e["id"] for e in events]
+    org_ids = list({e["org_id"] for e in events})
+    taken_map = db.tickets_counts_batch(eids)
+    photo_map = db.photo_counts_batch(eids)
+    orgs_map = db.get_users_batch(org_ids)
+    now_ts = int(time.time())
+    result = []
+    for e in events:
+        taken = taken_map.get(e["id"], 0)
+        org = orgs_map.get(e["org_id"])
+        result.append({
+            "id": e["id"], "title": e["title"], "description": e["description"],
+            "starts_at": e["starts_at"], "area": e["area"],
+            "price_text": e["price_text"], "pay_url": e["pay_url"],
+            "capacity": e["capacity"], "refs_needed": e["refs_needed"],
+            "channel": e["channel"], "age_limit": e["age_limit"],
+            "cover": e["cover"], "city": e["city"], "genre": e["genre"],
+            "taken": taken,
+            "sold_out": bool((e["capacity"] and taken >= e["capacity"])
+                             or ("soldout" in e.keys() and e["soldout"])),
+            "is_mine": me == e["org_id"], "org_id": e["org_id"], "status": e["status"],
+            "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
+            "featured": bool(e["featured_until"] and e["featured_until"] > now_ts) if "featured_until" in e.keys() else False,
+            "soldout_flag": bool(e["soldout"]) if "soldout" in e.keys() else False,
+            "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
+            "cover_ver": e["created_at"],
+            "photos": photo_map.get(e["id"], 0),
+            "promo_code": e["promo_code"] if "promo_code" in e.keys() else "",
+            "host": (org["username"] or org["first_name"] or "host") if org else "host",
+            "host_verified": bool(org and org["is_verified"]) if org else False,
+        })
+    return web.json_response(result)
 
 
 async def h_cities(request: web.Request):
@@ -148,17 +234,29 @@ async def h_event(request: web.Request):
         {"code": t["code"], "kind": t["kind"], "status": t["status"]} if t else None
     )
     refs = db.referrals_of(e["id"], me)
-    data["my_refs"] = len(refs)
 
     bot = request.app["bot"]
     from bot import check_subscribed  # локальный импорт, чтобы не плодить циклы
+
+    # подсчёт валидных рефералов (с проверкой подписки на канал, если задан)
+    if e["channel"]:
+        valid_refs = 0
+        for r in refs:
+            if await check_subscribed(bot, e["channel"], r["referred_id"]):
+                valid_refs += 1
+        data["my_refs"] = valid_refs
+    else:
+        data["my_refs"] = len(refs)
 
     data["subscribed"] = await check_subscribed(bot, e["channel"], me)
     # точный адрес видят владелец и модераторы (для проверки), гостям — скрыт
     if me == e["org_id"] or me in config.ADMIN_IDS:
         data["address"] = e["address"]
         data["is_admin_view"] = me in config.ADMIN_IDS and me != e["org_id"]
-    me_username = (await bot.get_me()).username
+    app = request.app
+    if "bot_username" not in app:
+        app["bot_username"] = (await bot.get_me()).username
+    me_username = app["bot_username"]
     data["ref_link"] = f"https://t.me/{me_username}?start=ref_{e['id']}_{me}"
     data["share_link"] = f"https://t.me/{me_username}?start=evt_{e['id']}"
     return web.json_response(data)
@@ -231,12 +329,37 @@ async def _notify_admins_new(bot, event_id: int, title: str, org: str, warn: str
 
 async def h_create_event(request: web.Request):
     me = request["user"]["id"]
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Некорректный JSON"}, status=400)
     required = ("title", "starts_at")
     if any(not body.get(k) for k in required):
         return web.json_response({"error": "title и дата обязательны"}, status=400)
-    if len(body.get("title", "")) > 80:
-        return web.json_response({"error": "слишком длинное название"}, status=400)
+    title = str(body.get("title", "")).strip()
+    if len(title) > 80 or len(title) < 2:
+        return web.json_response({"error": "Название: 2-80 символов"}, status=400)
+    body["title"] = title
+    # валидация числовых полей
+    try:
+        body["starts_at"] = int(body["starts_at"])
+    except (ValueError, TypeError):
+        return web.json_response({"error": "Некорректная дата"}, status=400)
+    if body["starts_at"] <= time.time():
+        return web.json_response({"error": "Дата должна быть в будущем"}, status=400)
+    # ограничение длины текстовых полей
+    if len(str(body.get("description", ""))) > 3000:
+        return web.json_response({"error": "Описание слишком длинное (макс. 3000)"}, status=400)
+    if len(str(body.get("area", ""))) > 200:
+        return web.json_response({"error": "Район слишком длинный"}, status=400)
+    if len(str(body.get("address", ""))) > 300:
+        return web.json_response({"error": "Адрес слишком длинный"}, status=400)
+    if len(str(body.get("promo_code", ""))) > 40:
+        return web.json_response({"error": "Промокод слишком длинный"}, status=400)
+    # защита от спама событиями: лимит активных на пользователя
+    active_count = len([e for e in db.org_events(me) if e["status"] in ("active", "pending")])
+    if active_count >= 20:
+        return web.json_response({"error": "Лимит: не более 20 активных событий"}, status=400)
     # привязка к qtickets: достаём id события из ссылки оплаты
     if body.get("pay_url"):
         body["qt_event_id"] = qtickets.parse_event_id(body["pay_url"])
@@ -270,7 +393,10 @@ async def h_edit_event(request: web.Request):
     e = db.get_event(eid)
     if not e or e["org_id"] != me:
         return web.json_response({"error": "Это не твоё событие"}, status=403)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Некорректный JSON"}, status=400)
     if "title" in body and not str(body["title"]).strip():
         return web.json_response({"error": "Название не может быть пустым"}, status=400)
     if "title" in body and len(body["title"]) > 80:
@@ -669,12 +795,17 @@ async def h_claim_free(request: web.Request):
     # пересчёт валидных рефералов: приглашённый должен быть подписан на канал прямо сейчас
     refs = db.referrals_of(event_id, me)
     valid = 0
-    for r in refs:
-        if await check_subscribed(bot, e["channel"], r["referred_id"]):
-            valid += 1
+    if e["channel"]:
+        for r in refs:
+            if await check_subscribed(bot, e["channel"], r["referred_id"]):
+                valid += 1
+    else:
+        # если канала нет — все рефералы считаются валидными
+        valid = len(refs)
     if valid < e["refs_needed"]:
+        need_more = e["refs_needed"] - valid
         return web.json_response(
-            {"error": f"Приведи ещё {e['refs_needed'] - valid} друз.", "need": "refs",
+            {"error": f"Приведи ещё {need_more} друз.", "need": "refs",
              "have": valid, "needed": e["refs_needed"]},
             status=400,
         )
@@ -745,13 +876,47 @@ async def h_my_tickets(request: web.Request):
             "address": t["address"] if reveal else None,
             # билет через qtickets: настоящий билет выдаёт qtickets, наш QR не нужен
             "qtickets": bool(t["qt_event_id"]),
+            "has_cover": bool(t["has_cover"]) if "has_cover" in t.keys() else False,
+            "cover_ver": t["cover_ver"] if "cover_ver" in t.keys() else 0,
         })
     return web.json_response(out)
 
 
 async def h_my_events(request: web.Request):
     me = request["user"]["id"]
-    return web.json_response([event_json(e, me) for e in db.org_events(me)])
+    events = db.org_events(me)
+    if not events:
+        return web.json_response([])
+    eids = [e["id"] for e in events]
+    taken_map = db.tickets_counts_batch(eids)
+    photo_map = db.photo_counts_batch(eids)
+    org = db.get_user(me)
+    now_ts = int(time.time())
+    result = []
+    for e in events:
+        taken = taken_map.get(e["id"], 0)
+        result.append({
+            "id": e["id"], "title": e["title"], "description": e["description"],
+            "starts_at": e["starts_at"], "area": e["area"],
+            "price_text": e["price_text"], "pay_url": e["pay_url"],
+            "capacity": e["capacity"], "refs_needed": e["refs_needed"],
+            "channel": e["channel"], "age_limit": e["age_limit"],
+            "cover": e["cover"], "city": e["city"], "genre": e["genre"],
+            "taken": taken,
+            "sold_out": bool((e["capacity"] and taken >= e["capacity"])
+                             or ("soldout" in e.keys() and e["soldout"])),
+            "is_mine": True, "org_id": e["org_id"], "status": e["status"],
+            "ends_at": e["ends_at"] if "ends_at" in e.keys() else 0,
+            "featured": bool(e["featured_until"] and e["featured_until"] > now_ts) if "featured_until" in e.keys() else False,
+            "soldout_flag": bool(e["soldout"]) if "soldout" in e.keys() else False,
+            "has_cover": bool(e["cover_img"]) if "cover_img" in e.keys() else False,
+            "cover_ver": e["created_at"],
+            "photos": photo_map.get(e["id"], 0),
+            "promo_code": e["promo_code"] if "promo_code" in e.keys() else "",
+            "host": (org["username"] or org["first_name"] or "host") if org else "host",
+            "host_verified": bool(org and org["is_verified"]) if org else False,
+        })
+    return web.json_response(result)
 
 
 async def h_guests(request: web.Request):
@@ -914,7 +1079,8 @@ async def poll_qtickets_payments(bot) -> None:
 
 
 def make_web_app(bot) -> web.Application:
-    app = web.Application(middlewares=[security_middleware, auth_middleware])
+    app = web.Application(middlewares=[security_middleware, auth_middleware],
+                          client_max_size=5 * 1024 * 1024)  # 5MB max body
     app["bot"] = bot
     app.add_routes([
         web.get("/", h_index),

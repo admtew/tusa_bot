@@ -28,6 +28,21 @@ router = Router()
 # куда вёл diolink до показа шлагбаума (открыть после подписки)
 _pending_start: dict[int, str] = {}
 
+# anti-spam: throttle команд (user_id -> last_command_time)
+_cmd_throttle: dict[int, float] = {}
+CMD_COOLDOWN = 0.8  # секунды между командами
+
+
+def _throttled(user_id: int) -> bool:
+    """True если слишком частое нажатие команд."""
+    import time
+    now = time.time()
+    last = _cmd_throttle.get(user_id, 0)
+    if now - last < CMD_COOLDOWN:
+        return True
+    _cmd_throttle[user_id] = now
+    return False
+
 
 def webapp_kb(path: str = "", text: str = "Открыть party 🎉") -> InlineKeyboardMarkup:
     url = config.WEBAPP_URL + (f"#{path}" if path else "")
@@ -54,10 +69,12 @@ async def gate_passed(bot: Bot, user_id: int) -> bool:
 async def send_gate(message: Message) -> None:
     await message.answer(
         "<b>Почти готово!</b> 🔒\n\n"
-        f"Чтобы пользоваться AFTERS, подпишись на наш канал @{config.REQUIRED_CHANNEL} — "
+        f"Чтобы пользоваться AFTERS, подпишись на наш канал "
+        f"<a href=\"https://t.me/{config.REQUIRED_CHANNEL}\">@{config.REQUIRED_CHANNEL}</a> — "
         "там все главные вечеринки и анонсы.\n\n"
         "Подпишись и нажми «Я подписался» 👇",
         reply_markup=gate_kb(),
+        disable_web_page_preview=True,
     )
 
 
@@ -90,6 +107,8 @@ async def bot_is_admin(bot: Bot, channel: str) -> bool:
 @router.message(CommandStart(deep_link=True))
 async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> None:
     user = message.from_user
+    if _throttled(user.id):
+        return
     is_new = db.upsert_user(user.id, user.username, user.first_name)
     payload = command.args or ""
     if not await gate_passed(bot, user.id):
@@ -131,10 +150,14 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
             text += "\n\nТот, кто тебя позвал, стал ближе к free-проходке 🔥"
             # уведомляем пригласившего, чтобы он сразу видел прогресс
             try:
+                all_refs = db.referrals_of(event_id, referrer_id)
                 valid = 0
-                for r in db.referrals_of(event_id, referrer_id):
-                    if await check_subscribed(bot, event["channel"], r["referred_id"]):
-                        valid += 1
+                if event["channel"]:
+                    for r in all_refs:
+                        if await check_subscribed(bot, event["channel"], r["referred_id"]):
+                            valid += 1
+                else:
+                    valid = len(all_refs)
                 need = event["refs_needed"] or 0
                 msg = (f"🔥 <b>{user.first_name} присоединился по твоей ссылке</b>\n"
                        f"«{event['title']}» — прогресс: {valid}")
@@ -161,11 +184,23 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
             await message.answer("Вот эта party 👇", reply_markup=webapp_kb(f"event/{event_id}"))
             return
 
+    # --- ссылка на профиль организатора: org_<id> ---
+    if payload.startswith("org_"):
+        try:
+            org_id = int(payload[4:])
+        except ValueError:
+            org_id = 0
+        if org_id and db.get_user(org_id):
+            await message.answer("Профиль организатора 👇", reply_markup=webapp_kb(f"org/{org_id}"))
+            return
+
     await _send_welcome(message)
 
 
 @router.message(CommandStart())
 async def start_plain(message: Message, bot: Bot) -> None:
+    if _throttled(message.from_user.id):
+        return
     db.upsert_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     if not await gate_passed(bot, message.from_user.id):
         await send_gate(message)
@@ -204,10 +239,8 @@ async def on_checksub(call, bot: Bot) -> None:
 async def _send_welcome(message: Message) -> None:
     name = message.from_user.first_name or "Привет"
     await message.answer(
-        f"<b>{name}, добро пожаловать в AFTERS</b> 🎉\n\n"
-        "Все вечеринки города — в одном месте.\n"
-        "Выбирай событие, покупай билет и знакомься с новыми людьми.\n\n"
-        "Жми кнопку ниже 👇",
+        f"<b>{name}, добро пожаловать в AFTERS</b> 🎉\n"
+        "Все вечеринки города — в одном месте.",
         reply_markup=webapp_kb(),
     )
 
@@ -215,16 +248,8 @@ async def _send_welcome(message: Message) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(
-        "<b>Как это работает</b>\n\n"
-        "🎟 <b>Гостям</b>\n"
-        "Открой приложение, выбери party, забери билет. QR покажешь на входе — "
-        "точный адрес придёт сюда незадолго до начала.\n\n"
-        "🪩 <b>Организаторам</b>\n"
-        "Кнопка «Создать»: своя афиша, free-вход за приведённых друзей, "
-        "гостевой список и сканер QR. Платные билеты — через qtickets, "
-        "бот сам поймает оплату (подключается в профиле).\n\n"
-        "Вопросы — /support",
-        reply_markup=webapp_kb(),
+        "<b>Нужна помощь?</b> 💬\n\n"
+        f"По техническим вопросам пиши администратору: {config.SUPPORT_CONTACT}",
     )
 
 
@@ -234,6 +259,75 @@ async def cmd_support(message: Message) -> None:
         "<b>Поддержка</b> 💬\n\n"
         f"Есть вопрос или нашёл баг — пиши {config.SUPPORT_CONTACT}.",
     )
+
+
+@router.message(Command("faq"))
+async def cmd_faq(message: Message) -> None:
+    await message.answer(
+        "<b>Частые вопросы</b>\n\n"
+        "❓ <b>Как купить билет?</b>\n"
+        "Открой приложение, выбери событие, нажми «Купить билет» или «Получить билет» — "
+        "бот выдаст QR-код для входа.\n\n"
+        "❓ <b>Где мой билет?</b>\n"
+        "Во вкладке «Билеты» в приложении. Покажи QR-код на входе.\n\n"
+        "❓ <b>Зачем добавлять данные?</b>\n"
+        "Данные нужны для оформления билета и напоминаний. "
+        "Точный адрес мероприятия приходит за несколько часов до начала.\n\n"
+        "🔒 <b>Ваши данные в безопасности</b>\n"
+        "Мы не передаём ваши данные третьим лицам. Информация используется "
+        "только для работы сервиса.\n\n"
+        f"Остались вопросы? Пиши владельцу: {config.SUPPORT_CONTACT}",
+    )
+
+
+@router.message(Command("tickets"))
+async def cmd_tickets(message: Message, bot: Bot) -> None:
+    if not await gate_passed(bot, message.from_user.id):
+        await send_gate(message)
+        return
+    me = message.from_user.id
+    tickets = db.user_tickets(me)
+    if not tickets:
+        await message.answer("🎟 У тебя пока нет билетов. Загляни в афишу!",
+                             reply_markup=webapp_kb())
+        return
+    lines = ["<b>🎟 Твои билеты:</b>\n"]
+    me_username = (await bot.get_me()).username
+    for t in tickets:
+        f = dt.datetime.fromtimestamp(t["starts_at"])
+        when = f.strftime("%d.%m в %H:%M")
+        status = ""
+        if t["kind"] == "paid_pending":
+            status = " ⏳ ожидает подтверждения"
+        elif t["status"] == "used":
+            status = " ✅ использован"
+        link = f"https://t.me/{me_username}?start=evt_{t['event_id']}"
+        lines.append(f"• <a href=\"{link}\">{t['title']}</a> — {when}, {t['area'] or 'место уточняется'}{status}")
+    lines.append("\nОткрой приложение, чтобы увидеть QR-код 👇")
+    await message.answer("\n".join(lines), reply_markup=webapp_kb("tickets", "Мои билеты 🎟"),
+                         disable_web_page_preview=True)
+
+
+@router.message(Command("subscriptions"))
+async def cmd_subscriptions(message: Message, bot: Bot) -> None:
+    if not await gate_passed(bot, message.from_user.id):
+        await send_gate(message)
+        return
+    me = message.from_user.id
+    follows = db.user_follows(me)
+    if not follows:
+        await message.answer("📢 Ты пока ни на кого не подписан.\n"
+                             "Открой профиль организатора в приложении и нажми «Подписаться».",
+                             reply_markup=webapp_kb())
+        return
+    me_username = (await bot.get_me()).username
+    lines = ["<b>📢 Твои подписки:</b>\n"]
+    for f in follows:
+        name = f["first_name"] or "Организатор"
+        uname = f"@{f['username']}" if f["username"] else ""
+        link = f"https://t.me/{me_username}?start=org_{f['org_id']}"
+        lines.append(f"• <a href=\"{link}\">{name}</a> {uname}")
+    await message.answer("\n".join(lines), disable_web_page_preview=True)
 
 
 @router.message(Command("app"))
@@ -499,8 +593,11 @@ async def main() -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="🎉 Открыть AFTERS"),
         BotCommand(command="app", description="🎟 Все вечеринки города"),
-        BotCommand(command="help", description="ℹ️ Как это работает"),
-        BotCommand(command="support", description="💬 Поддержка"),
+        BotCommand(command="tickets", description="🎫 Мои билеты"),
+        BotCommand(command="subscriptions", description="📢 Мои подписки"),
+        BotCommand(command="faq", description="❓ Частые вопросы"),
+        BotCommand(command="help", description="💬 Связаться с админом"),
+        BotCommand(command="support", description="🛠 Поддержка"),
     ])
 
     # веб-сервер Mini App + API
@@ -514,12 +611,13 @@ async def main() -> None:
     log.info("Mini App server on port %s", config.PORT)
 
     # планировщик: напоминания + опрос qtickets + авто-перевод прошедших в past
-    from api import poll_qtickets_payments
+    from api import poll_qtickets_payments, _rate, _rate_write
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", minutes=5, args=[bot])
     scheduler.add_job(poll_qtickets_payments, "interval", minutes=2, args=[bot])
     scheduler.add_job(lambda: db.mark_past_events(), "interval", minutes=10)
     scheduler.add_job(lambda: db.purge_old_proofs(), "interval", hours=6)  # приватность: чистим скрины
+    scheduler.add_job(lambda: (_rate.cleanup(), _rate_write.cleanup()), "interval", minutes=10)
     scheduler.start()
     db.mark_past_events()  # разово на старте
     db.purge_old_proofs()

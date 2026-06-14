@@ -18,14 +18,15 @@
   --accent:#FF3D5A;
   --head-bg:rgba(10,10,11,0.82); --bar-bg:rgba(12,12,14,0.92);
   --display:'Archivo',sans-serif; --sans:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
-  --r:18px;
+  --r:18px; --r-inner:12px; --r-sm:10px;
 }
 /* светлая тема (переключатель в профиле) */
 body[data-theme="light"]{
   --bg:#F2EEE6; --surface:#FFFFFF; --surface-2:#EAE4D9;
-  --line:rgba(237,231,219,0.09); --line-2:rgba(237,231,219,0.15);
-  --text-0:#161310; --text-1:#46433c; --text-2:#79756b; --text-3:#a8a499;
-  --head-bg:rgba(242,238,230,0.82); --bar-bg:rgba(242,238,230,0.92);
+  --line:rgba(30,25,18,0.10); --line-2:rgba(30,25,18,0.16);
+  --text-0:#161310; --text-1:#3a3730; --text-2:#5e5a50; --text-3:#8a867c;
+  --accent:#E0284A;
+  --head-bg:rgba(242,238,230,0.88); --bar-bg:rgba(242,238,230,0.94);
 }
 /* light-theme readability fixes */
 body[data-theme="light"] .tg-logo{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:#161310;}
@@ -34,13 +35,32 @@ body[data-theme="light"] .host-name,
 body[data-theme="light"] .pstat-n,
 body[data-theme="light"] .mycard-title{color:#161310;}
 body[data-theme="light"] .profile-stats{background:#FFFFFF;}
+body[data-theme="light"] .chip{background:#FFFFFF;border-color:rgba(30,25,18,0.14);color:#3a3730;}
+body[data-theme="light"] .chip-on{background:#161310;color:#F2EEE6;border-color:#161310;}
+body[data-theme="light"] .input{background:#FFFFFF;border-color:rgba(30,25,18,0.14);color:#161310;}
+body[data-theme="light"] .input::placeholder{color:#8a867c;}
+body[data-theme="light"] .seg-opt.on{background:#161310;color:#F2EEE6;}
+body[data-theme="light"] .drail-day,.drail-all{border-color:rgba(30,25,18,0.12);}
+body[data-theme="light"] .ticket{background:#FFFFFF;border-color:rgba(30,25,18,0.12);}
+body[data-theme="light"] .ticket-title{color:#161310;}
+body[data-theme="light"] .gcard-title{color:#161310;}
+body[data-theme="light"] .date-strip{background:#FFFFFF;border-color:rgba(30,25,18,0.10);}
+body[data-theme="light"] .spec-card{background:#FFFFFF;border-color:rgba(30,25,18,0.10);}
+body[data-theme="light"] .ref-card{background:#FFFFFF;border-color:rgba(30,25,18,0.10);}
+body[data-theme="light"] .mycard{background:#FFFFFF;border-color:rgba(30,25,18,0.10);}
+body[data-theme="light"] .tab.on .tab-lab{color:#161310;}
+body[data-theme="light"] .btn-ghost{background:#FFFFFF;border-color:rgba(30,25,18,0.14);color:#3a3730;}
+body[data-theme="light"] .toast{background:#FFFFFF;border-color:rgba(30,25,18,0.14);color:#161310;box-shadow:0 10px 30px -10px rgba(0,0,0,0.15);}
+body[data-theme="light"] .guest-row{background:#FFFFFF;border-color:rgba(30,25,18,0.10);}
+body[data-theme="light"] .city-row{background:#FFFFFF;border-color:rgba(30,25,18,0.10);}
+body[data-theme="light"] .qr-sheet{background:#FFFFFF;border-color:rgba(30,25,18,0.12);}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;
   -webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
   -webkit-touch-callout:none;}
 /* в полях ввода печатать и выделять можно */
 input,textarea{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default;}
-html,body{margin:0;height:100%;}
-body{background:var(--bg);font-family:var(--sans);color:var(--text-0);display:flex;flex-direction:column;height:100dvh;overflow:hidden;}
+html{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;position:fixed;width:100%;}
+body{margin:0;background:var(--bg);font-family:var(--sans);color:var(--text-0);display:flex;flex-direction:column;height:100dvh;overflow:hidden;overscroll-behavior:none;position:fixed;width:100%;touch-action:pan-y;}
 .mono{font-family:var(--mono);font-feature-settings:"tnum";}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;padding:0;}
 input,textarea,select{font-family:inherit;}
@@ -123,7 +143,7 @@ input,textarea,select{font-family:inherit;}
 .feed.grid .pcard:nth-child(n){animation-delay:0s;}
 
 /* buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;border-radius:13px;transition:.16s;font-size:15px;white-space:nowrap;text-decoration:none;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;border-radius:var(--r-inner);transition:.16s;font-size:15px;white-space:nowrap;text-decoration:none;}
 .btn-primary{background:var(--accent);color:#fff;padding:15px 22px;box-shadow:0 12px 30px -10px rgba(255,61,90,.7);}
 .btn-primary:active{transform:scale(0.985);}
 .btn-primary:disabled{opacity:0.4;box-shadow:none;}
@@ -147,7 +167,7 @@ input,textarea,select{font-family:inherit;}
 /* overlay / detail */
 .overlay{position:fixed;inset:0;z-index:40;background:var(--bg);animation:slideUp .32s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;}
 @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
-.detail{height:100%;display:flex;flex-direction:column;overflow-y:auto;position:relative;}
+.detail{height:100%;display:flex;flex-direction:column;overflow-y:auto;position:relative;overscroll-behavior:none;}
 .detail::-webkit-scrollbar{display:none;}
 .detail-hero{position:relative;height:56vh;max-height:520px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;}
 .detail-hero-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.4),transparent 24%,transparent 52%,var(--bg) 99%);}
@@ -157,7 +177,7 @@ input,textarea,select{font-family:inherit;}
 .detail-title{font-family:var(--display);font-weight:900;font-size:42px;line-height:0.9;letter-spacing:-1.6px;margin:11px 0 7px;color:#fff;word-break:break-word;}
 .detail-genre{font-family:var(--mono);font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,0.75);}
 .detail-body{padding:20px 18px 0;}
-.date-strip{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:15px 18px;}
+.date-strip{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:15px 18px;}
 .date-cell{display:flex;align-items:center;gap:11px;flex:1;}
 .date-cell>div{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .ds-big{font-family:var(--mono);font-size:13.5px;font-weight:600;color:var(--text-0);white-space:nowrap;}
@@ -168,14 +188,14 @@ input,textarea,select{font-family:inherit;}
 .host-name{font-size:14.5px;font-weight:600;}
 .host-role{font-family:var(--mono);font-size:11px;color:var(--text-3);}
 .detail-desc{color:var(--text-1);font-size:14.5px;line-height:1.62;margin:0 0 22px;white-space:pre-wrap;}
-.spec-card{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:2px 16px;}
+.spec-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:2px 16px;}
 .spec{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line);}
 .spec:last-child{border-bottom:none;}
 .spec-k{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--text-3);}
 .spec-v{font-size:13.5px;color:var(--text-0);font-weight:500;font-family:var(--mono);}
 .lock-note{display:flex;align-items:center;gap:9px;margin:14px 2px 0;font-size:12.5px;color:var(--text-2);line-height:1.4;}
 .lock-note b{color:var(--text-1);}
-.ref-card{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:16px;margin-top:18px;}
+.ref-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-top:18px;}
 .ref-title{font-size:13.5px;font-weight:600;margin-bottom:4px;}
 .ref-sub{font-size:12px;color:var(--text-2);line-height:1.45;}
 .bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:12px 0;}
@@ -195,7 +215,7 @@ input,textarea,select{font-family:inherit;}
 .field-hint{font-family:var(--mono);font-size:10px;color:var(--text-3);}
 .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;padding:0 18px;}
 .field-grid .field{padding:0;}
-.input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:14px 15px;color:var(--text-0);font-size:15px;outline:none;}
+.input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-inner);padding:14px 15px;color:var(--text-0);font-size:15px;outline:none;}
 .input::placeholder{color:var(--text-3);}
 .input:focus{border-color:var(--accent);background:var(--surface-2);}
 .textarea{resize:none;line-height:1.5;}
@@ -210,17 +230,17 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .cover-swatches{display:flex;gap:8px;}
 .swatch{width:40px;height:40px;border-radius:11px;flex-shrink:0;border:2px solid transparent;opacity:0.75;}
 .swatch.on{border-color:var(--text-0);opacity:1;transform:scale(1.04);}
-.stepper{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden;}
+.stepper{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-inner);overflow:hidden;}
 .stepper button{width:44px;height:48px;font-size:20px;color:var(--text-1);}
 .step-input{flex:1;width:100%;text-align:center;background:none;border:none;color:var(--text-0);font-family:var(--mono);font-size:15px;outline:none;}
-.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:4px;gap:4px;}
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-inner);padding:4px;gap:4px;}
 .seg-opt{flex:1;padding:11px;border-radius:9px;font-size:13.5px;font-weight:500;color:var(--text-2);}
 .seg-opt.on{background:var(--text-0);color:#0a0a0b;}
 .create-cta{padding:8px 18px calc(20px + env(safe-area-inset-bottom));display:flex;}
 
 /* tickets */
 .ticket-list{padding:14px 16px 0;display:flex;flex-direction:column;gap:18px;}
-.ticket{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;text-align:left;width:100%;}
+.ticket{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;text-align:left;width:100%;}
 .ticket-cover{width:104px;flex-shrink:0;position:relative;}
 .ticket-cover-mark{position:absolute;left:10px;bottom:8px;font-family:var(--display);font-weight:900;font-size:17px;color:rgba(255,255,255,0.92);line-height:0.85;}
 .ticket-notch{position:absolute;left:96px;width:16px;height:16px;border-radius:50%;background:var(--bg);z-index:2;}
@@ -239,14 +259,14 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .profile-id{flex:1;min-width:0;}
 .profile-name{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-0.8px;line-height:1;}
 .profile-handle{font-family:var(--mono);font-size:12px;color:var(--text-2);display:block;margin-top:5px;}
-.profile-stats{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:16px 8px;margin-top:20px;}
+.profile-stats{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 8px;margin-top:20px;}
 .pstat{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
 .pstat-n{font-family:var(--display);font-weight:800;font-size:22px;}
 .pstat-l{font-family:var(--mono);font-size:10px;letter-spacing:0.8px;color:var(--text-3);text-transform:uppercase;}
 .pstat-div{width:1px;height:30px;background:var(--line);}
 .my-list{padding:14px 16px 0;display:flex;flex-direction:column;gap:16px;}
-.mycard{display:flex;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;}
-.mycard-cover{width:88px;height:110px;flex-shrink:0;border-radius:12px;position:relative;overflow:hidden;}
+.mycard{display:flex;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px;}
+.mycard-cover{width:88px;height:110px;flex-shrink:0;border-radius:var(--r-inner);position:relative;overflow:hidden;}
 .mycard-cover-mark{position:absolute;left:9px;bottom:8px;font-family:var(--display);font-weight:900;font-size:15px;color:rgba(255,255,255,0.92);line-height:0.85;}
 .mycard-body{flex:1;display:flex;flex-direction:column;min-width:0;}
 .mycard-date{font-family:var(--mono);font-size:10.5px;color:var(--text-2);}
@@ -273,7 +293,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .city-title{font-family:var(--display);font-weight:900;font-size:52px;line-height:0.9;letter-spacing:-2px;margin:16px 0 0;text-transform:lowercase;}
 .city-sub{color:var(--text-2);font-size:14px;margin:12px 0 0;}
 .city-list{display:flex;flex-direction:column;gap:10px;}
-.city-row{display:flex;align-items:center;gap:14px;padding:12px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:16px;width:100%;}
+.city-row{display:flex;align-items:center;gap:14px;padding:12px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);width:100%;}
 .city-row.on{border-color:var(--accent);background:rgba(255,61,90,.09);}
 .city-thumb{width:54px;height:54px;border-radius:12px;flex-shrink:0;overflow:hidden;}
 .city-row-mid{flex:1;min-width:0;}
@@ -298,7 +318,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:18px;border-bottom:1px solid var(--line);}
 .sheet-title{font-family:var(--display);font-weight:800;font-size:22px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .sheet-body{flex:1;overflow-y:auto;padding:14px 16px;}
-.guest-row{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:11px 13px;margin-bottom:9px;}
+.guest-row{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-inner);padding:11px 13px;margin-bottom:9px;}
 .guest-name{font-size:14px;font-weight:500;}
 .guest-st{font-family:var(--mono);font-size:10.5px;color:var(--text-2);margin-top:3px;}
 .approve-btn{padding:8px 13px;border-radius:10px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;flex-shrink:0;margin-left:10px;}
@@ -338,7 +358,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .recap-meta.dim{color:var(--text-3);margin-top:2px;}
 
 /* boot splash */
-#splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 32%,#1a130f 0%,#0a0a0b 70%);animation:splashOut .5s ease 1.2s forwards;}
+#splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(120% 90% at 50% 32%,#1a130f 0%,#0a0a0b 70%);animation:splashOut .4s ease .7s forwards;}
 .splash-word{position:relative;display:flex;align-items:flex-end;font-family:var(--display);font-weight:900;font-size:54px;letter-spacing:-2.5px;color:#EDE7DB;line-height:1;animation:splashIn .7s cubic-bezier(.2,.85,.25,1) both;}
 .splash-word .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);margin:0 0 11px 4px;box-shadow:0 0 22px 2px rgba(255,61,90,.55);animation:dotPulse 1.1s ease-in-out infinite;}
 .splash-sub{font-family:var(--mono);font-size:10.5px;letter-spacing:4px;text-transform:uppercase;color:#6a665e;margin-top:18px;animation:splashIn .7s .12s cubic-bezier(.2,.85,.25,1) both;}
@@ -381,7 +401,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 /* плавность появления контента */
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .feed,.ticket-list,.my-list,.empty{animation:fadeUp .24s cubic-bezier(.2,.8,.2,1);}
-.screen-area{scroll-behavior:smooth;overscroll-behavior:contain;}
+.screen-area{scroll-behavior:smooth;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
 .create{animation:none;}
 .pcard{animation:fadeUp .3s cubic-bezier(.2,.8,.2,1) both;}
 .feed .pcard:nth-child(2){animation-delay:.04s;}
@@ -428,7 +448,7 @@ function toggleTheme(){
   haptic(); renderProfile();
 }
 /* убираем сплэш после анимации */
-setTimeout(function(){ const s=document.getElementById('splash'); if(s) s.remove(); }, 1750);
+setTimeout(function(){ const s=document.getElementById('splash'); if(s) s.remove(); }, 1000);
 const ME = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {id:0, first_name:'Гость', username:''};
 const $screen = document.getElementById('screen');
 const $overlays = document.getElementById('overlays');
@@ -440,12 +460,20 @@ let TAB = 'feed';
 let FILTER = { date:null, type:'все' };
 let scanner = null;
 
+/* кэш данных для мгновенного переключения табов */
+let _feedCache = { city:null, data:null, ts:0 };
+let _ticketsCache = { data:null, ts:0 };
+const CACHE_TTL = 15000; // 15 сек
+
 const COVERS = ['ember','ultramarine','acid','violet','steel','rust','teal'];
 const CITIES = [
   { name:'Москва', tag:'столица движа', cover:'ember' },
   { name:'Санкт-Петербург', tag:'культурная ночь', cover:'ultramarine' },
-  { name:'Новосибирск', tag:'сибирский андеграунд', cover:'teal' },
-  { name:'Екатеринбург', tag:'уральский бит', cover:'rust' },
+  { name:'Сочи', tag:'море и вайб', cover:'teal' },
+  { name:'Краснодар', tag:'южный грув', cover:'acid' },
+  { name:'Ростов-на-Дону', tag:'дон и ритм', cover:'rust' },
+  { name:'Новосибирск', tag:'сибирский андеграунд', cover:'steel' },
+  { name:'Екатеринбург', tag:'уральский бит', cover:'violet' },
   { name:'Казань', tag:'на берегу Волги', cover:'violet' },
   { name:'Калининград', tag:'самый запад', cover:'acid' },
   { name:'Владивосток', tag:'край у океана', cover:'steel' },
@@ -594,12 +622,22 @@ function plural(n){ const a=n%10,b=n%100;
   return 'вечеринок'; }
 
 async function renderFeed(){
-  $screen.innerHTML = skeleton('feed');
   const cityParam = (CITY && CITY!==ALL_CITIES) ? CITY : '';
+  const now = Date.now();
+  // если есть свежий кэш — рисуем мгновенно, потом обновим в фоне
   let feed;
-  try { feed = await api('/api/events?city='+encodeURIComponent(cityParam)); }
-  catch(e){ $screen.innerHTML = `<div class="empty"><div class="empty-title">не загрузилось</div><div class="empty-sub">${esc(e.message)}</div></div>`; return; }
+  const cached = _feedCache.city === cityParam && (now - _feedCache.ts) < CACHE_TTL;
+  if(cached){
+    feed = _feedCache.data;
+  } else {
+    $screen.innerHTML = skeleton('feed');
+    try { feed = await api('/api/events?city='+encodeURIComponent(cityParam)); }
+    catch(e){ $screen.innerHTML = `<div class="empty"><div class="empty-title">не загрузилось</div><div class="empty-sub">${esc(e.message)}</div></div>`; return; }
+    _feedCache = { city:cityParam, data:feed, ts:Date.now() };
+  }
   if(TAB!=='feed') return;
+  // фоновое обновление кэша
+  if(cached){ api('/api/events?city='+encodeURIComponent(cityParam)).then(function(f){ _feedCache={city:cityParam,data:f,ts:Date.now()}; }).catch(function(){}); }
   // даты, где есть события (чтобы подсветить в календаре)
   const eventDates = {};
   feed.forEach(e=>{ eventDates[fmt(e.starts_at).date]=1; });
@@ -751,6 +789,12 @@ async function openDetail(id){
         <div class="spec"><span class="spec-k">ЦЕНА</span><span class="spec-v">${priceLabel(e)}</span></div>
         ${e.address?`<div class="spec"><span class="spec-k">АДРЕС</span><span class="spec-v" style="font-family:var(--sans)">${esc(e.address)}</span></div>`:''}
       </div>
+      ${e.promo_code?`<div class="ref-card" style="margin-top:14px;cursor:pointer" onclick="copyPromo('${esc(e.promo_code)}')">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div><div class="ref-title">Промокод</div>
+          <div class="ref-sub">Нажми, чтобы скопировать</div></div>
+          <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent);letter-spacing:1px;user-select:text;-webkit-user-select:text">${esc(e.promo_code)}</div>
+        </div></div>`:''}
       ${e.address
         ? `<div class="lock-note">${I.lock()}<span>${e.is_admin_view?'Адрес виден тебе как модератору. Гостям он скрыт до начала.':'Адрес виден тебе как организатору. Гостям придёт незадолго до начала.'}</span></div>`
         : `<div class="lock-note">${I.lock()}<span>Точный адрес придёт в чат с ботом <b>незадолго до начала</b></span></div>`}
@@ -846,8 +890,20 @@ function shareRef(link, title){
 function shareEvent(link, title){
   tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Смотри какая party: '+title));
 }
+function copyPromo(code){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(function(){ haptic(); toast('Промокод скопирован: '+code); })
+      .catch(function(){ fallbackCopy(code); });
+  } else { fallbackCopy(code); }
+}
+function fallbackCopy(text){
+  const ta=document.createElement('textarea'); ta.value=text;
+  ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta);
+  ta.select(); document.execCommand('copy'); ta.remove(); haptic(); toast('Промокод скопирован: '+text);
+}
 async function claimFree(id){
   try{ await api('/api/events/'+id+'/claim_free',{method:'POST',body:'{}'});
+    _ticketsCache.ts=0; _feedCache.ts=0;
     haptic(); closeDetail(); toast('Билет получен — он в «Билетах»'); go('tickets'); }
   catch(err){ toast(err.message,false); }
 }
@@ -888,7 +944,7 @@ function sendProofBtn(id){ return '<button class="btn btn-primary" style="width:
 async function sendProof(id){
   if(!PROOF_DATA){ toast('Сначала выбери файл',false); return; }
   try{ await api('/api/events/'+id+'/claim_paid',{method:'POST',body:JSON.stringify({proof_data:PROOF_DATA})});
-    haptic(); PROOF_DATA=''; const s=document.getElementById('proof-sheet'); if(s) s.remove();
+    haptic(); PROOF_DATA=''; _ticketsCache.ts=0; const s=document.getElementById('proof-sheet'); if(s) s.remove();
     toast('Заявка принята, проверяем подлинность ✓'); closeDetail(); }
   catch(err){ toast(err.message,false); }
 }
@@ -911,8 +967,10 @@ function ticketCard(t, i){
     : t.status==='used' ? `<span class="ticket-status" style="color:var(--text-3)">использован</span>`
     : `<span class="ticket-status">${I.check(13)} подтверждён</span>`;
   const passed = t.event_status==='past' || t.status==='used';
+  const tCovClass = t.has_cover ? 'cov-img' : covCls(t.cover);
+  const tCovStyle = t.has_cover ? `style="background-image:url(/cover/${t.event_id}?v=${t.cover_ver||0});background-size:cover;background-position:center"` : '';
   return `<button class="ticket glass${passed?' dim':''}" onclick="showQR(${i})">
-    <div class="ticket-cover ${covCls(t.cover)}"><div class="ticket-cover-mark">${firstWord(t.title)}</div></div>
+    <div class="ticket-cover ${tCovClass}" ${tCovStyle}><div class="ticket-cover-mark">${t.has_cover?'':firstWord(t.title)}</div></div>
     <div class="ticket-notch top"></div><div class="ticket-notch bottom"></div>
     <div class="ticket-info">
       <div class="ticket-date">${f.dow} ${f.date} · ${timeRange(t)}</div>
@@ -922,10 +980,18 @@ function ticketCard(t, i){
     </div></button>`;
 }
 async function renderTickets(){
-  $screen.innerHTML = skeleton('feed');
+  const now = Date.now();
   let ts;
-  try { ts = await api('/api/me/tickets'); } catch(e){ $screen.innerHTML=''; toast(e.message,false); return; }
+  const cached = _ticketsCache.data && (now - _ticketsCache.ts) < CACHE_TTL;
+  if(cached){
+    ts = _ticketsCache.data;
+  } else {
+    $screen.innerHTML = skeleton('feed');
+    try { ts = await api('/api/me/tickets'); } catch(e){ $screen.innerHTML=''; toast(e.message,false); return; }
+    _ticketsCache = { data:ts, ts:Date.now() };
+  }
   if(TAB!=='tickets') return;
+  if(cached){ api('/api/me/tickets').then(function(t){ _ticketsCache={data:t,ts:Date.now()}; }).catch(function(){}); }
   window.__TICKETS = ts;
   if(!ts.length){
     $screen.innerHTML = `<div class="empty" style="min-height:80%">
@@ -978,7 +1044,7 @@ function showQR(i){
 function blankForm(){
   return { title:'', description:'', date:'', time:'18:00', endtime:'', area:'', address:'', capacity:0,
     age_limit:'18+', price_num:'', pay_url:'', refs_needed:0, channel:'', genre:'',
-    cover:'violet', cover_data:'', photos_data:[],
+    cover:'violet', cover_data:'', photos_data:[], promo_code:'',
     city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва' };
 }
 let FORM = blankForm();
@@ -996,7 +1062,7 @@ async function editEvent(id){
     endtime: e.ends_at?(function(){const x=new Date(e.ends_at*1000);return `${pad(x.getHours())}:${pad(x.getMinutes())}`;})():'',
     area:e.area||'', address:e.address||'', capacity:e.capacity||0, age_limit:e.age_limit||'18+',
     price_num:priceNum, pay_url:e.pay_url||'', refs_needed:e.refs_needed||0, channel:e.channel||'',
-    genre:e.genre||'', cover:e.cover||'violet', cover_data:'', photos_data:[], city:e.city||'Москва',
+    genre:e.genre||'', cover:e.cover||'violet', cover_data:'', photos_data:[], promo_code:e.promo_code||'', city:e.city||'Москва',
   };
   EDIT_ID = id; CREATE_STEP = 0;
   TAB='create'; renderTabbar(); $screen.scrollTop=0; renderCreate();
@@ -1071,6 +1137,8 @@ function renderCreate(){
         <input class="input" inputmode="numeric" placeholder="0" value="${esc(F.price_num)}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.price_num=this.value" style="padding-right:34px">
         <span style="position:absolute;right:15px;top:50%;transform:translateY(-50%);color:var(--text-2);font-family:var(--mono)">₽</span>
       </div></div>
+    <div class="field"><div class="field-lab"><span class="mono">ПРОМОКОД</span><span class="field-hint">скидочный код для гостей</span></div>
+      <input class="input" placeholder="PROMO2024" value="${esc(F.promo_code)}" oninput="FORM.promo_code=this.value" maxlength="40"></div>
     <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА QTICKETS</span><span class="field-hint">если платно через qtickets</span></div>
       <input class="input" id="f-payurl" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
       <div class="field" style="margin-top:-8px">
@@ -1090,7 +1158,7 @@ function renderCreate(){
         <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ДРУЗЕЙ ДЛЯ FREE</span><span class="field-hint">0 = выкл</span></div>
           <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" inputmode="numeric" value="${F.refs_needed}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
         <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ТВОЙ КАНАЛ</span><span class="field-hint">без @</span></div>
-          <input class="input" id="f-channel" placeholder="andrey_music" value="${esc(F.channel)}" oninput="FORM.channel=this.value.replace('@','')"></div>
+          <input class="input" id="f-channel" placeholder="your_channel" value="${esc(F.channel)}" oninput="FORM.channel=this.value.replace('@','')"></div>
       </div>
       <div style="height:10px"></div>
       <button class="btn btn-ghost" style="width:100%" onclick="checkChannel()">Проверить бота в канале</button>
@@ -1198,6 +1266,7 @@ async function publish(){
     area:F.area, address:F.address, capacity:F.capacity, age_limit:F.age_limit,
     price_text:priceText, pay_url:F.pay_url, refs_needed:F.refs_needed,
     channel:F.channel, genre:F.genre, cover:F.cover, city:F.city||'Москва',
+    promo_code:F.promo_code||'',
   };
   if(F.cover_data) payload.cover_data = F.cover_data;   // обложку шлём только если поменяли
   try{
@@ -1210,7 +1279,7 @@ async function publish(){
     }
     payload.photos_data = F.photos_data;
     const r = await api('/api/events',{method:'POST',body:JSON.stringify(payload)});
-    haptic();
+    haptic(); _feedCache.ts=0;
     toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
     FORM = blankForm();
     if(r.status==='pending'){ PSEG='host'; go('profile'); }

@@ -17,6 +17,9 @@ def conn() -> sqlite3.Connection:
         _conn.execute("PRAGMA foreign_keys=ON")
         _conn.execute("PRAGMA busy_timeout=30000")  # ждать блокировку, а не падать
         _conn.execute("PRAGMA synchronous=NORMAL")
+        _conn.execute("PRAGMA cache_size=-8000")     # 8MB кэш вместо 2MB
+        _conn.execute("PRAGMA temp_store=MEMORY")    # temp таблицы в RAM
+        _conn.execute("PRAGMA mmap_size=67108864")   # 64MB memory-mapped I/O
     return _conn
 
 
@@ -134,6 +137,8 @@ def init() -> None:
         "ALTER TABLE events ADD COLUMN featured_until INTEGER NOT NULL DEFAULT 0",
         # ручная отметка «распродано» (работает для любого события, в т.ч. внешних)
         "ALTER TABLE events ADD COLUMN soldout INTEGER NOT NULL DEFAULT 0",
+        # промокод (скидочный код, заданный организатором)
+        "ALTER TABLE events ADD COLUMN promo_code TEXT NOT NULL DEFAULT ''",
     ):
         try:
             c.execute(ddl)
@@ -194,8 +199,8 @@ def create_event(org_id: int, data: dict, status: str = "active",
     cur = c.execute(
         """INSERT INTO events(org_id,title,description,starts_at,ends_at,area,address,
            price_text,pay_url,capacity,refs_needed,channel,age_limit,cover,city,genre,qt_event_id,
-           cover_img,status,created_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           cover_img,status,promo_code,created_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             org_id,
             data["title"], data.get("description", ""), int(data["starts_at"]),
@@ -208,6 +213,7 @@ def create_event(org_id: int, data: dict, status: str = "active",
             str(data.get("city") or "Москва"), data.get("genre", ""),
             int(data.get("qt_event_id") or 0),
             cover_img, status,
+            str(data.get("promo_code") or ""),
             now(),
         ),
     )
@@ -365,6 +371,16 @@ def follower_ids(org_id: int) -> list[int]:
     return [r[0] for r in rows]
 
 
+def user_follows(user_id: int) -> list[sqlite3.Row]:
+    """Организаторы, на которых подписан пользователь."""
+    return conn().execute(
+        """SELECT f.org_id, u.username, u.first_name
+           FROM follows f JOIN users u ON u.tg_id = f.org_id
+           WHERE f.user_id=? ORDER BY f.created_at DESC""",
+        (user_id,),
+    ).fetchall()
+
+
 def follower_count(org_id: int) -> int:
     return conn().execute(
         "SELECT COUNT(*) FROM follows WHERE org_id=?", (org_id,)
@@ -392,7 +408,7 @@ def set_event_status(event_id: int, status: str) -> None:
 # редактируемые поля (всё, кроме служебных)
 EDITABLE = ("title", "description", "area", "address", "price_text", "pay_url",
             "capacity", "refs_needed", "channel", "age_limit", "cover", "city",
-            "genre", "starts_at", "ends_at")
+            "genre", "starts_at", "ends_at", "promo_code")
 
 
 def update_event(event_id: int, org_id: int, data: dict, status: str,
@@ -611,6 +627,18 @@ def get_user(tg_id: int) -> sqlite3.Row | None:
     return conn().execute("SELECT * FROM users WHERE tg_id=?", (tg_id,)).fetchone()
 
 
+def get_users_batch(tg_ids: list[int]) -> dict[int, sqlite3.Row]:
+    """Пакетное получение пользователей."""
+    if not tg_ids:
+        return {}
+    c = conn()
+    placeholders = ",".join("?" * len(tg_ids))
+    rows = c.execute(
+        f"SELECT * FROM users WHERE tg_id IN ({placeholders})", tg_ids
+    ).fetchall()
+    return {r["tg_id"]: r for r in rows}
+
+
 def get_event(event_id: int) -> sqlite3.Row | None:
     return conn().execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
 
@@ -628,6 +656,33 @@ def tickets_count(event_id: int) -> int:
         "SELECT COUNT(*) FROM tickets WHERE event_id=? AND status!='revoked' AND kind!='paid_pending'",
         (event_id,),
     ).fetchone()[0]
+
+
+def tickets_counts_batch(event_ids: list[int]) -> dict[int, int]:
+    """Пакетный подсчёт билетов для списка событий (без N+1)."""
+    if not event_ids:
+        return {}
+    c = conn()
+    placeholders = ",".join("?" * len(event_ids))
+    rows = c.execute(
+        f"SELECT event_id, COUNT(*) FROM tickets WHERE event_id IN ({placeholders}) "
+        f"AND status!='revoked' AND kind!='paid_pending' GROUP BY event_id",
+        event_ids,
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def photo_counts_batch(event_ids: list[int]) -> dict[int, int]:
+    """Пакетный подсчёт фото для списка событий."""
+    if not event_ids:
+        return {}
+    c = conn()
+    placeholders = ",".join("?" * len(event_ids))
+    rows = c.execute(
+        f"SELECT event_id, COUNT(*) FROM event_photos WHERE event_id IN ({placeholders}) GROUP BY event_id",
+        event_ids,
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
 
 
 def get_user_ticket(event_id: int, user_id: int) -> sqlite3.Row | None:
@@ -650,7 +705,9 @@ def create_ticket(event_id: int, user_id: int, kind: str) -> str:
 def user_tickets(user_id: int) -> list[sqlite3.Row]:
     return conn().execute(
         """SELECT t.*, e.title, e.starts_at, e.ends_at, e.area, e.address,
-                  e.age_limit, e.cover, e.qt_event_id, e.pay_url, e.status AS event_status
+                  e.age_limit, e.cover, e.qt_event_id, e.pay_url, e.status AS event_status,
+                  (e.cover_img IS NOT NULL AND length(e.cover_img)>0) AS has_cover,
+                  e.created_at AS cover_ver
            FROM tickets t JOIN events e ON e.id = t.event_id
            WHERE t.user_id=? AND t.status!='revoked' AND e.status IN ('active','past')
            ORDER BY e.starts_at ASC""",
