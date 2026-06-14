@@ -30,8 +30,9 @@ ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "5"))
 SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@workersant")
 
 # Контакт ВЛАДЕЛЬЦА проекта (показывается в /faq — вопросы сотрудничества/рекламы).
-# Если переменная не задана — подставляется SUPPORT_CONTACT.
-OWNER_CONTACT: str = os.getenv("OWNER_CONTACT", "") or SUPPORT_CONTACT
+# Если переменная не задана — строка про владельца в /faq просто не показывается
+# (НЕ подменяется на помощника).
+OWNER_CONTACT: str = os.getenv("OWNER_CONTACT", "").strip()
 
 # Контакт МОДЕРАТОРА (показывается для жалоб и багов). Если не задан — SUPPORT_CONTACT.
 MODERATOR_CONTACT: str = os.getenv("MODERATOR_CONTACT", "") or SUPPORT_CONTACT
