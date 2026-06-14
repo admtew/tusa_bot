@@ -775,6 +775,34 @@ async def h_qtickets_preview(request: web.Request):
     return web.json_response({"qt_event_id": eid, "types": types, "fields": fields})
 
 
+async def h_attend(request: web.Request):
+    """«Я иду»: добавляем пользователя в список участников. Без QR/пруфов —
+    просто запись + напоминание за 2 часа до начала."""
+    me = request["user"]["id"]
+    event_id = int(request.match_info["id"])
+    e = db.get_event(event_id)
+    if not e or e["status"] != "active":
+        return web.json_response({"error": "Событие не найдено"}, status=404)
+    if e["org_id"] == me:
+        return web.json_response({"error": "Это твоё событие"}, status=400)
+    if db.get_user_ticket(event_id, me):
+        return web.json_response({"ok": True, "already": True})
+    status, _code = db.create_ticket_capped(event_id, me, "going", e["capacity"] or 0)
+    if status == db.TICKET_SOLD_OUT:
+        return web.json_response({"error": "Мест больше нет 😢"}, status=400)
+    if status == db.TICKET_DUP:
+        return web.json_response({"ok": True, "already": True})
+    return web.json_response({"ok": True})
+
+
+async def h_unattend(request: web.Request):
+    """Отмена участия («Я иду» → отменить)."""
+    me = request["user"]["id"]
+    event_id = int(request.match_info["id"])
+    db.remove_user_ticket(event_id, me)
+    return web.json_response({"ok": True})
+
+
 async def h_claim_free(request: web.Request):
     """Забрать free-билет: проверяем подписку, рефералов, лимит мест."""
     me = request["user"]["id"]
@@ -1185,6 +1213,8 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/channel/check", h_channel_check),
         web.post("/api/events", h_create_event),
         web.get("/api/events/{id}", h_event),
+        web.post("/api/events/{id}/attend", h_attend),
+        web.post("/api/events/{id}/unattend", h_unattend),
         web.post("/api/events/{id}/claim_free", h_claim_free),
         web.post("/api/events/{id}/claim_paid", h_claim_paid),
         web.get("/api/events/{id}/guests", h_guests),

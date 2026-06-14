@@ -715,6 +715,15 @@ def get_user_ticket(event_id: int, user_id: int) -> sqlite3.Row | None:
     ).fetchone()
 
 
+def remove_user_ticket(event_id: int, user_id: int) -> bool:
+    """Пользователь отменил участие («Я иду» → отмена). Удаляем его запись."""
+    c = conn()
+    cur = c.execute("DELETE FROM tickets WHERE event_id=? AND user_id=?",
+                    (event_id, user_id))
+    c.commit()
+    return cur.rowcount > 0
+
+
 def create_ticket(event_id: int, user_id: int, kind: str) -> str:
     code = uuid.uuid4().hex
     c = conn()

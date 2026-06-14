@@ -571,8 +571,8 @@ async def send_reminders(bot: Bot) -> None:
             await bot.send_message(
                 t["user_id"],
                 f"<b>Сегодня — {t['title']}</b> в {when} 🎉\n"
-                f"📍 Адрес: {addr}\n\nБилет — во вкладке «Билеты». До встречи!",
-                reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
+                f"📍 Адрес: {addr}\n\nТы идёшь — до встречи!",
+                reply_markup=webapp_kb("tickets", "Открыть 🎟"),
             )
         except Exception as e:
             log.warning("reminder5 to %s failed: %s", t["user_id"], e)
@@ -587,7 +587,7 @@ async def send_reminders(bot: Bot) -> None:
                 t["user_id"],
                 f"Через пару часов начинаем! <b>{t['title']}</b> в {when} 🔥\n"
                 f"📍 {addr}",
-                reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
+                reply_markup=webapp_kb("tickets", "Открыть 🎟"),
             )
         except Exception as e:
             log.warning("reminder2 to %s failed: %s", t["user_id"], e)

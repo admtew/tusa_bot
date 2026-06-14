@@ -243,7 +243,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 /* tickets */
 .ticket-list{padding:14px 16px 0;display:flex;flex-direction:column;gap:18px;}
 .ticket{position:relative;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;text-align:left;width:100%;}
-.ticket-cover{width:104px;flex-shrink:0;position:relative;}
+.ticket-cover{width:104px;flex-shrink:0;align-self:stretch;min-height:118px;position:relative;background-size:cover;background-position:center;background-repeat:no-repeat;}
 .ticket-cover-mark{position:absolute;left:10px;bottom:8px;font-family:var(--display);font-weight:900;font-size:17px;color:rgba(255,255,255,0.92);line-height:0.85;}
 .ticket-notch{position:absolute;left:96px;width:16px;height:16px;border-radius:50%;background:var(--bg);z-index:2;}
 .ticket-notch.top{top:-8px;}.ticket-notch.bottom{bottom:-8px;}
@@ -396,14 +396,9 @@ body.kbd .tabbar{transform:translateY(140%);}
 .sk-cover{width:100%;aspect-ratio:4/5;border-radius:18px;margin-bottom:13px;}
 .sk-line{height:16px;margin-bottom:9px;} .sk-line.w70{width:70%;} .sk-line.w40{width:40%;}
 
-/* carousel */
-.carousel{margin:0 0 16px;}
-.carousel-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:16px;}
-.carousel-track::-webkit-scrollbar{display:none;}
-.carousel-slide{flex:0 0 100%;aspect-ratio:16/10;scroll-snap-align:center;background-size:cover;background-position:center;border-radius:16px;}
-.carousel-dots{display:flex;justify-content:center;gap:6px;margin-top:8px;}
-.cdot{width:6px;height:6px;border-radius:50%;background:var(--line-2);transition:.2s;}
-.cdot.on{background:var(--accent);width:18px;border-radius:99px;}
+/* доп. фото — статичный список, без свайпа */
+.photo-stack{display:flex;flex-direction:column;gap:10px;margin:0 0 16px;}
+.photo-static{width:100%;aspect-ratio:16/10;background-size:cover;background-position:center;background-repeat:no-repeat;border-radius:16px;}
 
 /* статус-плашки */
 .status-line{text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:.5px;padding:10px;border-radius:12px;margin-bottom:6px;}
@@ -546,15 +541,6 @@ function skeleton(kind){
   if(kind==='feed') return '<div style="padding:18px">'+card+card+'</div>';
   return '<div style="padding:18px">'+card+'</div>';
 }
-function initCarousel(){
-  const tr=document.getElementById('ctrack'); if(!tr) return;
-  const dots=document.querySelectorAll('#carousel .cdot');
-  tr.addEventListener('scroll',function(){
-    const i=Math.round(tr.scrollLeft/tr.clientWidth);
-    dots.forEach((d,j)=>d.classList.toggle('on',j===i));
-  },{passive:true});
-}
-
 /* иконки */
 const I = {
   feed:(s=22,c='currentColor',w=1.7)=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>`,
@@ -759,37 +745,17 @@ async function openDetail(id){
   const hasTicket = !!e.my_ticket;
   const pending = hasTicket && e.my_ticket.kind==='paid_pending';
 
-  let refBlock = '';
-  if(e.refs_needed>0 && !hasTicket && !e.sold_out && !e.is_mine){
-    const pct = Math.min(100, Math.round(e.my_refs/e.refs_needed*100));
-    refBlock = `<div class="ref-card">
-      <div class="ref-title">Free-проходка за друзей</div>
-      <div class="ref-sub">Приведи друзей по своей ссылке${e.channel?' (друг подписывается на @'+esc(e.channel)+')':''} — твой прогресс: <b>${e.my_refs} из ${e.refs_needed}</b></div>
-      <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
-      <button class="btn btn-ghost" style="width:100%" onclick="shareRef('${e.ref_link}','${esc(e.title)}')">Позвать друзей</button>
-      ${e.my_refs>=e.refs_needed?`<div style="height:8px"></div><button class="btn btn-primary" style="width:100%" onclick="claimFree(${e.id})">Забрать free-билет</button>`:''}
-    </div>`;
-  }
-  let subBlock = '';
-  if(e.channel && !e.subscribed && !hasTicket){
-    subBlock = `<div class="lock-note">${I.lock()}<span>Для входа нужна подписка на <b>@${esc(e.channel)}</b></span></div>
-      <div style="height:10px"></div>
-      <a class="btn btn-ghost" style="width:100%" href="https://t.me/${esc(e.channel)}" target="_blank">Подписаться на @${esc(e.channel)}</a>`;
-  }
+  const going = hasTicket;   // пользователь в списке участников
   let cta;
   if(e.is_mine) cta = `<button class="btn btn-have cta-go" onclick="closeDetail();go('profile')">${I.user(18,'var(--text-1)')} Это твоё событие</button>`;
-  else if(pending) cta = `<button class="btn btn-have cta-go" disabled>⏳ Ждём подтверждения оплаты</button>`;
-  else if(hasTicket && e.my_ticket.status==='used') cta = `<button class="btn btn-have cta-go" disabled>Билет использован</button>`;
-  else if(hasTicket) cta = `<button class="btn btn-have cta-go" onclick="closeDetail();go('tickets')">${I.check(18)} Билет получен · показать</button>`;
+  else if(going) cta = `<button class="btn btn-have cta-go" onclick="cancelAttend(${e.id})">${I.check(18)} Ты идёшь · отменить</button>`;
   else if(e.sold_out) cta = `<button class="btn btn-soldout cta-go" disabled>Мест нет</button>`;
-  else if(e.pay_url) cta = `<button class="btn btn-primary cta-go" onclick="buyTicket(${e.id},'${encodeURIComponent(buyUrl(e))}')">Купить билет ${I.arrow()}</button>`;
-  else if(e.refs_needed>0 && e.my_refs<e.refs_needed) cta = `<button class="btn btn-primary cta-go" onclick="shareRef('${e.ref_link}','${esc(e.title)}')">Позвать друзей ${I.arrow()}</button>`;
-  else cta = `<button class="btn btn-primary cta-go" onclick="claimFree(${e.id})">Получить билет ${I.arrow()}</button>`;
+  else cta = `<button class="btn btn-primary cta-go" onclick="attend(${e.id})">Я иду ${I.arrow()}</button>`;
 
-  // организатору не показываем «я купил / получить билет» и реф-блок на своём событии
-  const paidExtra = (!e.is_mine && !hasTicket && !e.sold_out && e.pay_url)
-    ? `<div style="padding:10px 18px 14px"><button class="btn btn-ghost" style="width:100%" onclick="claimPaid(${e.id})">Я уже купил билет — отметить</button>
-       <div class="field-hint" style="text-align:center;margin-top:8px">отметив билет, ты будешь получать уведомления о событии (адрес, напоминания)</div></div>` : '<div style="height:14px"></div>';
+  // для платных событий — отдельная кнопка перехода на сайт оплаты (необязательно)
+  const buyExtra = (!e.is_mine && e.pay_url)
+    ? `<div style="padding:10px 18px 14px"><button class="btn btn-ghost" style="width:100%" onclick="buyTicket(${e.id},'${encodeURIComponent(buyUrl(e))}')">Купить билет на сайте ${I.arrow()}</button></div>`
+    : '<div style="height:14px"></div>';
 
   ov.innerHTML = `<div class="detail">
     <div class="detail-hero ${covClass(e)}" ${coverStyle(e)}>
@@ -804,12 +770,8 @@ async function openDetail(id){
       </div>
     </div>
     <div class="detail-body">
-      ${e.photos>0?`<div class="carousel" id="carousel">
-        <div class="carousel-track" id="ctrack">
-          <div class="carousel-slide ${covClass(e)}" ${coverStyle(e)}></div>
-          ${Array.from({length:e.photos}).map((_,i)=>`<div class="carousel-slide" style="background-image:url(/photo/${e.id}/${i}?v=${e.cover_ver||0})"></div>`).join('')}
-        </div>
-        <div class="carousel-dots">${Array.from({length:e.photos+1}).map((_,i)=>`<span class="cdot${i===0?' on':''}"></span>`).join('')}</div>
+      ${e.photos>0?`<div class="photo-stack">
+        ${Array.from({length:e.photos}).map((_,i)=>`<div class="photo-static" style="background-image:url(/photo/${e.id}/${i}?v=${e.cover_ver||0})"></div>`).join('')}
       </div>`:''}
       <div class="date-strip">
         <div class="date-cell">${I.cal()}<div><span class="ds-big">${f.dow} ${f.date}</span><span class="ds-small">${f.year}</span></div></div>
@@ -853,18 +815,15 @@ async function openDetail(id){
         </div></div>`:''}
       ${!e.address?`<div class="lock-note">${I.lock()}<span>Адрес уточняется</span></div>`:''}
       ${e.status&&e.status!=='active'?`<div class="lock-note" style="color:#f39c12">${I.spark(15,'#f39c12')}<span>Статус: ${e.status==='pending'?'на модерации':e.status}</span></div>`:''}
-      ${subBlock}
-      ${refBlock}
       <div style="height:90px"></div>
     </div>
     <div class="detail-cta">
       <div class="cta-price"><span class="cta-price-lab">${e.pay_url?'билет':'вход'}</span><div class="cta-price-val">${priceLabel(e)}</div></div>
       ${cta}
     </div>
-    ${paidExtra}
+    ${buyExtra}
     ${!e.is_mine?`<div style="text-align:center;padding:0 0 16px"><button class="btn-link" onclick="reportEvent(${e.id})">Пожаловаться на событие</button></div>`:''}
   </div>`;
-  initCarousel();
 }
 function closeDetail(){ const d=document.getElementById('detail-ov'); if(d) d.remove(); }
 
@@ -955,51 +914,18 @@ function fallbackCopy(text){
   ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta);
   ta.select(); document.execCommand('copy'); ta.remove(); haptic(); toast('Промокод скопирован: '+text);
 }
-async function claimFree(id){
-  try{ await api('/api/events/'+id+'/claim_free',{method:'POST',body:'{}'});
-    _ticketsCache.ts=0; _feedCache.ts=0;
-    haptic(); closeDetail(); toast('Билет получен — он в «Билетах»'); go('tickets'); }
+/* календарь: «Я иду» — добавляемся в участники, напомним за 2 часа */
+async function attend(id){
+  try{ const r = await api('/api/events/'+id+'/attend',{method:'POST',body:'{}'});
+    _ticketsCache.ts=0; _feedCache.ts=0; haptic('success');
+    toast(r.already?'Ты уже в списке ✓':'Принято! Напомним за 2 часа до начала 🎉');
+    openDetail(id); }
   catch(err){ toast(err.message,false); }
 }
-/* ручной флоу: загрузить скрин/PDF билета → заявка организатору */
-function claimPaid(id){
-  const sh=document.createElement('div'); sh.className='sheet'; sh.id='proof-sheet';
-  sh.innerHTML=`
-    <div class="sheet-head"><div class="sheet-title">Подтвердить оплату</div>
-      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
-    <div class="sheet-body">
-      <div class="ref-sub" style="margin-bottom:14px">Загрузи скрин или PDF билета — подтвердим участие.</div>
-      <label class="btn btn-ghost" style="width:100%">${I.image(16,'var(--text-1)')} Выбрать файл<input type="file" accept="image/*,application/pdf" style="display:none" onchange="pickProof(this,${id})"></label>
-      <div id="proof-prev" style="margin-top:12px"></div>
-    </div>`;
-  $overlays.appendChild(sh);
-}
-let PROOF_DATA='';
-function pickProof(input,id){
-  const file=input.files&&input.files[0]; if(!file) return;
-  const prev=document.getElementById('proof-prev');
-  const reader=new FileReader();
-  if(file.type==='application/pdf'){
-    reader.onload=function(ev){ PROOF_DATA=ev.target.result;
-      prev.innerHTML='<div class="ref-sub">📄 PDF выбран</div>'+sendProofBtn(id); };
-    reader.readAsDataURL(file); return;
-  }
-  reader.onload=function(ev){ const img=new Image(); img.onload=function(){
-    const max=1100; let w=img.width,h=img.height;
-    if(w>h&&w>max){h=Math.round(h*max/w);w=max;} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
-    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-    cv.getContext('2d').drawImage(img,0,0,w,h);
-    PROOF_DATA=cv.toDataURL('image/jpeg',0.85);
-    prev.innerHTML='<img src="'+PROOF_DATA+'" style="width:100%;border-radius:12px;margin-bottom:10px">'+sendProofBtn(id);
-  }; img.src=ev.target.result; };
-  reader.readAsDataURL(file);
-}
-function sendProofBtn(id){ return '<button class="btn btn-primary" style="width:100%" onclick="sendProof('+id+')">Отправить на проверку</button>'; }
-async function sendProof(id){
-  if(!PROOF_DATA){ toast('Сначала выбери файл',false); return; }
-  try{ await api('/api/events/'+id+'/claim_paid',{method:'POST',body:JSON.stringify({proof_data:PROOF_DATA})});
-    haptic(); PROOF_DATA=''; _ticketsCache.ts=0; const s=document.getElementById('proof-sheet'); if(s) s.remove();
-    toast('Заявка принята, проверяем подлинность ✓'); closeDetail(); }
+async function cancelAttend(id){
+  try{ await api('/api/events/'+id+'/unattend',{method:'POST',body:'{}'});
+    _ticketsCache.ts=0; _feedCache.ts=0; haptic();
+    toast('Убрали из планов'); openDetail(id); }
   catch(err){ toast(err.message,false); }
 }
 /* ссылка оплаты с меткой tg_id, чтобы бот сам сопоставил оплату */
@@ -1009,9 +935,9 @@ function buyUrl(e){
   const sep = url.indexOf('?')>=0 ? '&' : '?';
   return url + sep + 'utm_medium=tusa&utm_content=' + ME.id;
 }
-/* при переходе на оплату — тихо создаём заявку (бот свяжет её с оплатой) */
+/* при переходе на оплату — тихо добавляем в участники (чтобы пришло напоминание) */
 function buyClick(id){
-  try{ api('/api/events/'+id+'/claim_paid',{method:'POST',body:'{}'}).catch(function(){}); }catch(e){}
+  try{ api('/api/events/'+id+'/attend',{method:'POST',body:'{}'}).catch(function(){}); }catch(e){}
 }
 /* открыть сайт оплаты сразу, без некрасивой ссылки-подтверждения */
 function buyTicket(id, encUrl){
@@ -1026,9 +952,9 @@ function buyTicket(id, encUrl){
 /* ───────── билеты ───────── */
 function ticketCard(t, i){
   const f = fmt(t.starts_at);
-  const st = t.kind==='paid_pending' ? `<span class="ticket-status" style="color:var(--text-2)">⏳ ждём оплату</span>`
-    : t.status==='used' ? `<span class="ticket-status" style="color:var(--text-3)">использован</span>`
-    : `<span class="ticket-status">${I.check(13)} подтверждён</span>`;
+  const st = t.event_status==='past'
+    ? `<span class="ticket-status" style="color:var(--text-3)">завершилось</span>`
+    : `<span class="ticket-status">${I.check(13)} ты идёшь</span>`;
   const passed = t.event_status==='past' || t.status==='used';
   const tCovClass = t.has_cover ? 'cov-img' : covCls(t.cover);
   const tCovStyle = t.has_cover ? `style="background-image:url(/cover/${t.event_id}?v=${t.cover_ver||0});background-size:cover;background-position:center"` : '';
@@ -1059,8 +985,8 @@ async function renderTickets(){
   if(!ts.length){
     $screen.innerHTML = `<div class="empty" style="min-height:80%">
       <div class="empty-ic">${I.ticket(24,'var(--text-3)',1.5)}</div>
-      <div class="empty-title">билетов пока нет</div>
-      <div class="empty-sub">Выбери party в афише и получи билет — он появится здесь.</div>
+      <div class="empty-title">пока пусто</div>
+      <div class="empty-sub">Выбери party в афише и нажми «Я иду» — она появится здесь, и мы напомним.</div>
       <button class="btn btn-primary" onclick="go('feed')">В афишу</button></div>`;
     return;
   }
