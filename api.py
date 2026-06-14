@@ -137,7 +137,12 @@ async def security_middleware(request: web.Request, handler):
         raise
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
-    resp.headers["X-Frame-Options"] = "ALLOW-FROM https://web.telegram.org"
+    # Mini App открывается ВНУТРИ Telegram (iframe). Разрешаем встраивание только
+    # доменам Telegram, остальным — запрещаем (защита от клонов/кликджекинга).
+    resp.headers["Content-Security-Policy"] = (
+        "frame-ancestors https://web.telegram.org https://*.telegram.org "
+        "https://telegram.org tg://"
+    )
     if request.path.startswith("/api/"):
         # приватные ответы (билеты, гости, токены) не кешируем нигде
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -1130,9 +1135,8 @@ async def h_health(request: web.Request):
         data_dir_exists = os.path.isdir("/data")
         persistent = config.DB_PATH.startswith("/data") and data_dir_exists
         return web.json_response({
-            "ok": True, "db_path": config.DB_PATH,
-            "data_dir_exists": data_dir_exists,         # виден ли смонтированный Volume
-            "persistent_volume": persistent,
+            "ok": True,
+            "persistent_volume": persistent,            # пишем ли на постоянный диск
             "events": events, "tickets": tickets, "users": users,
         })
     except Exception as e:

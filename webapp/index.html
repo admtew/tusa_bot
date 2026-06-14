@@ -155,10 +155,10 @@ input,textarea,select{font-family:inherit;}
 .tab{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 12px;flex:1;}
 .tab-lab{font-size:10.5px;color:var(--text-3);font-weight:500;text-transform:lowercase;transition:color 0.25s ease;}
 .tab.on .tab-lab{color:#F2EEE6;}
-.tab-ic{display:flex;align-items:center;justify-content:center;height:24px;transition:transform .15s cubic-bezier(.2,.8,.2,1);}
-.tab:active .tab-ic{transform:scale(.82);}
-.tab.tapped .tab-ic{animation:tabPop .34s cubic-bezier(.34,1.56,.64,1);}
-@keyframes tabPop{0%{transform:scale(.8);}55%{transform:scale(1.18);}100%{transform:scale(1);}}
+.tab-ic{display:flex;align-items:center;justify-content:center;height:24px;transition:transform .2s cubic-bezier(.22,.61,.36,1);}
+.tab:active .tab-ic{transform:scale(.88);}
+.tab.tapped .tab-ic{animation:tabPop .32s cubic-bezier(.22,.61,.36,1);}
+@keyframes tabPop{0%{transform:scale(.92);}50%{transform:scale(1.08);}100%{transform:scale(1);}}
 .tab.mid{flex:0;}
 .tab.mid .tab-ic{width:50px;height:50px;border-radius:16px;background:var(--accent);box-shadow:0 10px 26px -8px rgba(255,61,90,.75);margin-top:-22px;border:3px solid var(--bg);}
 
@@ -309,8 +309,8 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 /* qr modal */
 .modal-wrap{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:28px;animation:fade .2s ease;}
 @keyframes fade{from{opacity:0;}to{opacity:1;}}
-.qr-sheet{position:relative;width:100%;max-width:330px;background:var(--surface);border:1px solid var(--line-2);border-radius:24px;padding:26px 24px 22px;display:flex;flex-direction:column;align-items:center;animation:pop .26s cubic-bezier(.2,.9,.3,1.2);}
-@keyframes pop{from{transform:scale(0.9);opacity:0;}to{transform:scale(1);opacity:1;}}
+.qr-sheet{position:relative;width:100%;max-width:330px;background:var(--surface);border:1px solid var(--line-2);border-radius:24px;padding:26px 24px 22px;display:flex;flex-direction:column;align-items:center;animation:pop .3s cubic-bezier(.22,.61,.36,1);}
+@keyframes pop{from{transform:scale(0.94);opacity:0;}to{transform:scale(1);opacity:1;}}
 .qr-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
 .qr-event{font-family:var(--display);font-weight:800;font-size:20px;color:var(--text-0);margin-top:6px;text-align:center;}
 .qr-when{font-family:var(--mono);font-size:11.5px;color:var(--text-2);margin:5px 0 20px;}
@@ -340,7 +340,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 
 
 /* toast */
-.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:90;display:inline-flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text-0);padding:12px 18px;border-radius:13px;font-size:13px;font-weight:500;box-shadow:0 20px 50px -16px rgba(0,0,0,0.8);animation:toastIn .3s cubic-bezier(.2,.9,.3,1.1);max-width:88vw;text-align:center;}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:90;display:inline-flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text-0);padding:12px 18px;border-radius:13px;font-size:13px;font-weight:500;box-shadow:0 20px 50px -16px rgba(0,0,0,0.8);animation:toastIn .32s cubic-bezier(.22,.61,.36,1);max-width:88vw;text-align:center;}
 @keyframes toastIn{from{transform:translate(-50%,16px);opacity:0;}to{transform:translate(-50%,0);opacity:1;}}
 .loading{padding:40px;text-align:center;color:var(--text-3);font-family:var(--mono);font-size:12px;letter-spacing:1px;}
 
@@ -413,19 +413,31 @@ body.kbd .tabbar{transform:translateY(140%);}
 /* своя фото-обложка: целая картинка, без зерна и без плитки */
 .cov-img{background-size:cover !important;background-position:center !important;background-repeat:no-repeat !important;background-blend-mode:normal !important;}
 
-/* плавность появления контента */
-@keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-.feed,.ticket-list,.my-list,.empty{animation:fadeUp .24s cubic-bezier(.2,.8,.2,1);}
+/* плавность появления контента — спокойные, не резкие переходы */
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.feed,.ticket-list,.my-list,.empty{animation:fadeUp .34s cubic-bezier(.22,.61,.36,1);}
 .screen-area{overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
-.create{animation:none;}
-.pcard{animation:fadeUp .3s cubic-bezier(.2,.8,.2,1) both;}
-.feed .pcard:nth-child(2){animation-delay:.04s;}
-.feed .pcard:nth-child(3){animation-delay:.08s;}
-.feed .pcard:nth-child(4){animation-delay:.12s;}
-.feed .pcard:nth-child(n+5){animation-delay:.15s;}
+.create{animation:fadeUp .34s cubic-bezier(.22,.61,.36,1);}
+.pcard{animation:fadeUp .4s cubic-bezier(.22,.61,.36,1) both;}
+.feed .pcard:nth-child(2){animation-delay:.05s;}
+.feed .pcard:nth-child(3){animation-delay:.1s;}
+.feed .pcard:nth-child(4){animation-delay:.15s;}
+.feed .pcard:nth-child(n+5){animation-delay:.2s;}
 img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
-.btn,.chip,.seg-opt,.tab,.city-row,.swatch{transition:transform .14s cubic-bezier(.2,.8,.2,1),background .14s,opacity .14s,border-color .14s;}
+.btn,.chip,.seg-opt,.tab,.city-row,.swatch{transition:transform .18s cubic-bezier(.22,.61,.36,1),background .18s ease,opacity .18s ease,border-color .18s ease;}
 .chip:active,.seg-opt:active,.city-row:active{transform:scale(.97);}
+.btn:active{transform:scale(.98);}
+
+/* черновик создания */
+.draft-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line-2);border-radius:14px;padding:12px 14px;margin:0 0 16px;animation:fadeUp .34s cubic-bezier(.22,.61,.36,1);}
+.draft-banner-txt{font-size:13px;color:var(--text-1);flex:1;min-width:140px;}
+.draft-banner-btns{display:flex;gap:8px;}
+.draft-banner-btns .btn.sm{padding:7px 12px;font-size:12px;}
+
+/* уважаем системную настройку «уменьшить движение» */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important;}
+}
 </style>
 </head>
 <body>
@@ -1038,6 +1050,46 @@ function blankForm(){
 }
 let FORM = blankForm();
 let EDIT_ID = null;   // если задан — режим редактирования
+
+/* ── черновик: автосохранение формы создания (на случай случайного закрытия) ── */
+const DRAFT_KEY = 'tusa_draft';
+function draftMeaningful(f){
+  return !!(f && (String(f.title||'').trim() || String(f.description||'').trim()
+    || String(f.area||'').trim() || String(f.address||'').trim() || String(f.date||'').trim()));
+}
+function saveDraft(){
+  if(EDIT_ID) return;                 // правку существующего не считаем черновиком
+  try{
+    if(draftMeaningful(FORM)){
+      // фото в localStorage не кладём (тяжёлые) — сохраняем только текст/настройки
+      const f = Object.assign({}, FORM); f.cover_data=''; f.cover_url=''; f.photos_data=[];
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ f:f, step:CREATE_STEP, ts:Date.now() }));
+    } else { clearDraft(); }
+  }catch(e){}
+}
+function loadDraft(){
+  try{ const s=localStorage.getItem(DRAFT_KEY); return s?JSON.parse(s):null; }catch(e){ return null; }
+}
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+function restoreDraft(){
+  const d = loadDraft(); if(!d || !d.f) return;
+  FORM = Object.assign(blankForm(), d.f);
+  CREATE_STEP = Math.min(2, d.step||0);
+  haptic(); renderCreate();
+}
+function discardDraft(){ clearDraft(); FORM = blankForm(); CREATE_STEP=0; renderCreate(); }
+// дебаунс-автосохранение при вводе в форме создания
+let _draftTimer = null;
+document.addEventListener('input', function(){
+  if(TAB!=='create' || EDIT_ID) return;
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(saveDraft, 500);
+});
+// мгновенно сохраняем черновик при сворачивании/закрытии приложения
+function _flushDraft(){ if(TAB==='create' && !EDIT_ID) saveDraft(); }
+window.addEventListener('pagehide', _flushDraft);
+window.addEventListener('blur', _flushDraft);
+document.addEventListener('visibilitychange', function(){ if(document.hidden) _flushDraft(); });
 async function editEvent(id){
   // закрываем любые открытые оверлеи (деталь события, профиль орга), чтобы редактор не оказался под ними
   if(typeof closeDetail==='function') closeDetail();
@@ -1063,7 +1115,7 @@ async function editEvent(id){
 }
 let CREATE_STEP = 0;
 const WIZ_STEPS = [{l:'инфо'},{l:'когда'},{l:'условия'}];
-function wizStep(n){ CREATE_STEP=n; $screen.scrollTop=0; renderCreate(); }
+function wizStep(n){ CREATE_STEP=n; saveDraft(); $screen.scrollTop=0; renderCreate(); }
 function stepValid(step){
   const F=FORM;
   if(step===0) return F.title.trim().length>1 && F.description.trim().length>=10;
@@ -1127,8 +1179,18 @@ function renderCreate(){
   const paneAnim = step !== renderCreate._prev ? '' : ' no-anim';
   renderCreate._prev = step;
 
+  // баннер «продолжить черновик» — только на 1-м шаге пустой новой формы
+  const _draft = (!EDIT_ID && step===0 && !draftMeaningful(F)) ? loadDraft() : null;
+  const draftBanner = (_draft && _draft.f) ? `<div class="draft-banner">
+      <div class="draft-banner-txt">🗂 Остался черновик${_draft.f.title?': «'+esc(_draft.f.title)+'»':''}</div>
+      <div class="draft-banner-btns">
+        <button class="btn btn-primary sm" onclick="restoreDraft()">Продолжить</button>
+        <button class="btn btn-ghost sm" onclick="discardDraft()">Заново</button>
+      </div></div>` : '';
+
   // ── ШАГ 1: инфо ──
   const pane1 = `<div class="wiz-pane${paneAnim}">
+    ${draftBanner}
     <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или цвет</span></div>
       <div class="cover-preview ${coverImg?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
         <div class="cover-preview-mark" id="cov-mark">${firstWord(F.title)||'NAME'}</div>
@@ -1137,7 +1199,7 @@ function renderCreate(){
       <div class="cover-swatches">${COVERS.map(k=>`<button class="swatch ${covCls(k)}${(!coverImg&&F.cover===k)?' on':''}" onclick="setCover('${k}')"></button>`).join('')}</div>
       ${coverImg?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';FORM.cover_url='';renderCreate()">Убрать фото, вернуть цвет</button>`:''}
     </div>
-    <div class="field"><div class="field-lab"><span class="mono">ЕЩЁ ФОТО</span><span class="field-hint">до 5, карусель в карточке</span></div>
+    <div class="field"><div class="field-lab"><span class="mono">ЕЩЁ ФОТО</span><span class="field-hint">до 5, покажем в событии</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${F.photos_data.map((p,i)=>`<div style="position:relative"><img src="${p}" style="width:62px;height:62px;object-fit:cover;border-radius:10px"><button onclick="FORM.photos_data.splice(${i},1);renderCreate()" style="position:absolute;top:-6px;right:-6px;background:var(--bg);border-radius:50%;width:20px;height:20px;border:1px solid var(--line-2)">×</button></div>`).join('')}
         ${F.photos_data.length<5?`<label class="swatch" style="display:flex;align-items:center;justify-content:center;width:62px;height:62px;opacity:1;border:1px dashed var(--line-2)">${I.plus(18,'var(--text-2)')}<input type="file" accept="image/*" style="display:none" onchange="pickExtraPhoto(this)"></label>`:''}
@@ -1328,7 +1390,7 @@ async function publish(){
     const r = await api('/api/events',{method:'POST',body:JSON.stringify(payload)});
     haptic(); _feedCache.ts=0;
     toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
-    FORM = blankForm();
+    FORM = blankForm(); clearDraft();   // черновик больше не нужен
     if(r.status==='pending'){ PSEG='host'; go('profile'); }
     else { go('feed'); setTimeout(function(){ openDetail(r.id); }, 350); }
   }catch(err){ toast(err.message,false); }
