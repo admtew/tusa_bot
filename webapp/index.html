@@ -1094,12 +1094,15 @@ function showQR(i){
 function blankForm(){
   return { title:'', description:'', date:'', time:'18:00', endtime:'', area:'', address:'', capacity:0,
     age_limit:'18+', price_num:'', pay_url:'', refs_needed:0, channel:'', genre:'',
-    cover:'violet', cover_data:'', photos_data:[], promo_code:'',
+    cover:'violet', cover_data:'', cover_url:'', photos_data:[], promo_code:'',
     city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва' };
 }
 let FORM = blankForm();
 let EDIT_ID = null;   // если задан — режим редактирования
 async function editEvent(id){
+  // закрываем любые открытые оверлеи (деталь события, профиль орга), чтобы редактор не оказался под ними
+  if(typeof closeDetail==='function') closeDetail();
+  ['detail-ov','org-ov'].forEach(function(x){ var el=document.getElementById(x); if(el) el.remove(); });
   let e;
   try{ e = await api('/api/events/'+id); }catch(err){ toast(err.message,false); return; }
   const d = new Date(e.starts_at*1000);
@@ -1112,7 +1115,9 @@ async function editEvent(id){
     endtime: e.ends_at?(function(){const x=new Date(e.ends_at*1000);return `${pad(x.getHours())}:${pad(x.getMinutes())}`;})():'',
     area:e.area||'', address:e.address||'', capacity:e.capacity||0, age_limit:e.age_limit||'18+',
     price_num:priceNum, pay_url:e.pay_url||'', refs_needed:e.refs_needed||0, channel:e.channel||'',
-    genre:e.genre||'', cover:e.cover||'violet', cover_data:'', photos_data:[], promo_code:e.promo_code||'', city:e.city||'Москва',
+    genre:e.genre||'', cover:e.cover||'violet', cover_data:'',
+    cover_url: e.has_cover ? ('/cover/'+id+'?v='+(e.cover_ver||0)) : '',
+    photos_data:[], promo_code:e.promo_code||'', city:e.city||'Москва',
   };
   EDIT_ID = id; CREATE_STEP = 0;
   TAB='create'; renderTabbar(); $screen.scrollTop=0; renderCreate();
@@ -1120,10 +1125,31 @@ async function editEvent(id){
 let CREATE_STEP = 0;
 const WIZ_STEPS = [{l:'инфо'},{l:'когда'},{l:'условия'}];
 function wizStep(n){ CREATE_STEP=n; $screen.scrollTop=0; renderCreate(); }
+function stepValid(step){
+  const F=FORM;
+  if(step===0) return F.title.trim().length>1;
+  if(step===1) return !!(F.date && F.time && (F.city||'').trim());
+  return true;
+}
+// живое обновление вида кнопки «Далее» без перерисовки экрана (сохраняет фокус/каретку)
+function updateWizNext(){
+  const b=document.getElementById('wiz-next-btn'); if(!b) return;
+  if(stepValid(CREATE_STEP)) b.classList.remove('disabled'); else b.classList.add('disabled');
+}
+// переход на следующий шаг с понятной подсказкой, если чего-то не хватает
+function wizNext(){
+  if(!stepValid(CREATE_STEP)){
+    if(CREATE_STEP===0) toast('Впиши название (хотя бы 2 символа)',false);
+    else if(CREATE_STEP===1) toast('Укажи дату, время и город',false);
+    return;
+  }
+  wizStep(Math.min(2, CREATE_STEP+1));
+}
 function recapCard(F){
-  const st = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
+  const img = F.cover_data || F.cover_url;
+  const st = img ? `style="background-image:url(${img});background-size:cover;background-position:center"` : '';
   return `<div class="recap">
-    <div class="recap-cover ${F.cover_data?'':covCls(F.cover)}" ${st}><div class="cover-preview-mark">${firstWord(F.title)||'NAME'}</div></div>
+    <div class="recap-cover ${img?'':covCls(F.cover)}" ${st}><div class="cover-preview-mark">${firstWord(F.title)||'NAME'}</div></div>
     <div class="recap-body">
       <div class="recap-title">${esc(F.title)||'Без названия'}</div>
       <div class="recap-meta">${F.date?esc(F.date):'—'}${F.time?' · '+esc(F.time):''}</div>
@@ -1134,20 +1160,21 @@ function renderCreate(){
   const _sc = $screen.scrollTop;
   if(!FORM.city) FORM.city = (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва';
   const F = FORM; const step = CREATE_STEP;
-  const valid = [F.title.trim().length>1, !!(F.date && F.time), true];
-  const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
+  const valid = [stepValid(0), stepValid(1), true];
+  const coverImg = F.cover_data || F.cover_url;
+  const prevStyle = coverImg ? `style="background-image:url(${coverImg});background-size:cover;background-position:center"` : '';
   const paneAnim = step !== renderCreate._prev ? '' : ' no-anim';
   renderCreate._prev = step;
 
   // ── ШАГ 1: инфо ──
   const pane1 = `<div class="wiz-pane${paneAnim}">
     <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или цвет</span></div>
-      <div class="cover-preview ${F.cover_data?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
+      <div class="cover-preview ${coverImg?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
         <div class="cover-preview-mark" id="cov-mark">${firstWord(F.title)||'NAME'}</div>
         <label class="cover-upload">${I.image(16,'#fff')} Загрузить фото<input type="file" accept="image/*" style="display:none" onchange="pickCover(this)"></label>
       </div>
-      <div class="cover-swatches">${COVERS.map(k=>`<button class="swatch ${covCls(k)}${(!F.cover_data&&F.cover===k)?' on':''}" onclick="setCover('${k}')"></button>`).join('')}</div>
-      ${F.cover_data?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';renderCreate()">Убрать фото, вернуть цвет</button>`:''}
+      <div class="cover-swatches">${COVERS.map(k=>`<button class="swatch ${covCls(k)}${(!coverImg&&F.cover===k)?' on':''}" onclick="setCover('${k}')"></button>`).join('')}</div>
+      ${coverImg?`<button class="btn btn-ghost sm" style="margin-top:8px" onclick="FORM.cover_data='';FORM.cover_url='';renderCreate()">Убрать фото, вернуть цвет</button>`:''}
     </div>
     <div class="field"><div class="field-lab"><span class="mono">ЕЩЁ ФОТО</span><span class="field-hint">до 5, карусель в карточке</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1155,7 +1182,7 @@ function renderCreate(){
         ${F.photos_data.length<5?`<label class="swatch" style="display:flex;align-items:center;justify-content:center;width:62px;height:62px;opacity:1;border:1px dashed var(--line-2)">${I.plus(18,'var(--text-2)')}<input type="file" accept="image/*" style="display:none" onchange="pickExtraPhoto(this)"></label>`:''}
       </div></div>
     <div class="field"><div class="field-lab"><span class="mono">НАЗВАНИЕ<span class="req">*</span></span></div>
-      <input class="input" maxlength="80" placeholder="Например: NEON PARTY" value="${esc(F.title)}" oninput="FORM.title=this.value;var m=document.getElementById('cov-mark');if(m)m.textContent=(this.value.split(' ')[0]||'NAME')"></div>
+      <input class="input" maxlength="80" placeholder="Например: NEON PARTY" value="${esc(F.title)}" oninput="FORM.title=this.value;var m=document.getElementById('cov-mark');if(m)m.textContent=(this.value.split(' ')[0]||'NAME');updateWizNext()"></div>
     <div class="field"><div class="field-lab"><span class="mono">ОПИСАНИЕ</span></div>
       <textarea class="input textarea" rows="4" placeholder="" oninput="FORM.description=this.value">${esc(F.description)}</textarea></div>
   </div>`;
@@ -1165,14 +1192,14 @@ function renderCreate(){
     ${recapCard(F)}
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ДАТА<span class="req">*</span></span></div>
-        <input class="input" type="date" value="${esc(F.date)}" onchange="FORM.date=this.value;renderCreate()"></div>
+        <input class="input" type="date" value="${esc(F.date)}" onchange="FORM.date=this.value;updateWizNext()"></div>
       <div class="field"><div class="field-lab"><span class="mono">НАЧАЛО<span class="req">*</span></span></div>
-        <input class="input" type="time" value="${esc(F.time)}" onchange="FORM.time=this.value;renderCreate()"></div>
+        <input class="input" type="time" value="${esc(F.time)}" onchange="FORM.time=this.value;updateWizNext()"></div>
     </div>
     <div class="field"><div class="field-lab"><span class="mono">КОНЕЦ</span><span class="field-hint">необязательно</span></div>
       <input class="input" type="time" value="${esc(F.endtime)}" onchange="FORM.endtime=this.value"></div>
     <div class="field"><div class="field-lab"><span class="mono">ГОРОД<span class="req">*</span></span><span class="field-hint">начни вводить</span></div>
-      <input class="input" list="city-options" placeholder="Москва" value="${esc(F.city)}" oninput="FORM.city=this.value">
+      <input class="input" list="city-options" placeholder="Москва" value="${esc(F.city)}" oninput="FORM.city=this.value;updateWizNext()">
       <datalist id="city-options">${CITIES.map(c=>`<option value="${c}"></option>`).join('')}</datalist></div>
     <div class="field"><div class="field-lab"><span class="mono">РАЙОН / МЕТРО</span><span class="field-hint">видно всем</span></div>
       <input class="input" placeholder="м. Курская" value="${esc(F.area)}" oninput="FORM.area=this.value"></div>
@@ -1220,7 +1247,7 @@ function renderCreate(){
 
   const pane = [pane1,pane2,pane3][step];
   const nextLabel = step<2 ? `Далее ${I.arrow()}` : (EDIT_ID?`Сохранить ${I.arrow()}`:`Опубликовать ${I.arrow()}`);
-  const nextAction = step<2 ? `wizStep(${step+1})` : 'confirmPublish()';
+  const nextAction = step<2 ? `wizNext()` : 'confirmPublish()';
   $screen.innerHTML = `
   <div class="create screen-scroll">
     <div class="wiz-head">
@@ -1235,7 +1262,7 @@ function renderCreate(){
     <div class="wiz-cta">
       ${step>0?`<button class="btn btn-ghost wiz-back" onclick="wizStep(${step-1})">${I.back(17,'var(--text-1)')} Назад</button>`
               :(EDIT_ID?`<button class="btn btn-ghost wiz-back" onclick="cancelEdit()">Отмена</button>`:'')}
-      <button class="btn btn-primary wiz-next${valid[step]?'':' disabled'}" ${valid[step]?'':'disabled'} onclick="${nextAction}">${nextLabel}</button>
+      <button class="btn btn-primary wiz-next${valid[step]?'':' disabled'}" id="wiz-next-btn" onclick="${nextAction}">${nextLabel}</button>
     </div>
   </div>`;
   $screen.scrollTop = _sc;
@@ -1256,7 +1283,7 @@ async function checkChannel(){
     }
   }catch(e){ box.innerHTML = `<div class="field-hint" style="margin-top:8px">${esc(e.message)}</div>`; }
 }
-function setCover(k){ FORM.cover=k; FORM.cover_data=''; renderCreate(); }
+function setCover(k){ FORM.cover=k; FORM.cover_data=''; FORM.cover_url=''; renderCreate(); }
 function stepCap(d){ FORM.capacity=Math.max(0,(FORM.capacity||0)+d); document.getElementById('f-cap').value=FORM.capacity; }
 function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); document.getElementById('f-refs').value=FORM.refs_needed; }
 /* выбор и сжатие своей обложки */
@@ -1276,7 +1303,7 @@ function pickCover(input){
     try{
       const data = cv.toDataURL('image/jpeg', 0.82);
       if(!data || data.length < 64){ toast('Не получилось сжать фото — попробуй другое',false); return; }
-      FORM.cover_data = data;
+      FORM.cover_data = data; FORM.cover_url = '';
       haptic(); renderCreate();
     }catch(e){ toast('Ошибка обработки фото',false); }
   };
