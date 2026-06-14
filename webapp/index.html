@@ -59,8 +59,8 @@ body[data-theme="light"] .qr-sheet{background:#FFFFFF;border-color:rgba(30,25,18
   -webkit-touch-callout:none;}
 /* в полях ввода печатать и выделять можно */
 input,textarea{-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;user-select:text;-webkit-touch-callout:default;}
-html{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;position:fixed;width:100%;}
-body{margin:0;background:var(--bg);font-family:var(--sans);color:var(--text-0);display:flex;flex-direction:column;height:100dvh;overflow:hidden;overscroll-behavior:none;position:fixed;width:100%;touch-action:pan-y;}
+html{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;}
+body{margin:0;background:var(--bg);font-family:var(--sans);color:var(--text-0);display:flex;flex-direction:column;height:100vh;overflow:hidden;overscroll-behavior:none;position:fixed;width:100%;touch-action:pan-y;}
 .mono{font-family:var(--mono);font-feature-settings:"tnum";}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;padding:0;}
 input,textarea,select{font-family:inherit;}
@@ -359,6 +359,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .wiz-bar{height:3px;border-radius:3px;background:var(--surface-2);overflow:hidden;}
 .wiz-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s cubic-bezier(.2,.8,.2,1);}
 .wiz-pane{padding-top:8px;animation:fadeUp .26s cubic-bezier(.2,.8,.2,1);}
+.wiz-pane.no-anim{animation:none;}
 .wiz-cta{position:sticky;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent,var(--bg) 26%);}
 .wiz-back{flex:0 0 auto;}
 .wiz-next{flex:1;}
@@ -415,7 +416,7 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 /* плавность появления контента */
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 .feed,.ticket-list,.my-list,.empty{animation:fadeUp .24s cubic-bezier(.2,.8,.2,1);}
-.screen-area{scroll-behavior:smooth;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
+.screen-area{overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
 .create{animation:none;}
 .pcard{animation:fadeUp .3s cubic-bezier(.2,.8,.2,1) both;}
 .feed .pcard:nth-child(2){animation-delay:.04s;}
@@ -446,6 +447,32 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
 try{ tg.disableVerticalSwipes && tg.disableVerticalSwipes(); }catch(e){}  // чтобы экран не уезжал при вводе
+/* плавный скролл к инпуту при открытии клавиатуры */
+(function(){
+  var kbTimer = null;
+  function scrollToActive(){
+    var el = document.activeElement;
+    if(!el || (el.tagName!=='INPUT' && el.tagName!=='TEXTAREA')) return;
+    if(!$screen || !$screen.contains(el)) return;
+    var r = el.getBoundingClientRect();
+    var vvH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    if(r.bottom > vvH - 20){
+      $screen.scrollTop += r.bottom - vvH + 80;
+    }
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', function(){
+      clearTimeout(kbTimer);
+      kbTimer = setTimeout(scrollToActive, 80);
+    });
+  }
+  document.addEventListener('focus', function(e){
+    if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA'){
+      clearTimeout(kbTimer);
+      kbTimer = setTimeout(scrollToActive, 350);
+    }
+  }, true);
+})();
 /* тема (тёмная/светлая) */
 let THEME='dark';
 try{ THEME = localStorage.getItem('afters_theme') || 'dark'; }catch(e){}
@@ -1105,14 +1132,15 @@ function recapCard(F){
 }
 function renderCreate(){
   const _sc = $screen.scrollTop;
-  requestAnimationFrame(function(){ $screen.scrollTop = _sc; });
   if(!FORM.city) FORM.city = (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва';
   const F = FORM; const step = CREATE_STEP;
   const valid = [F.title.trim().length>1, !!(F.date && F.time), true];
   const prevStyle = F.cover_data ? `style="background-image:url(${F.cover_data});background-size:cover;background-position:center"` : '';
+  const paneAnim = step !== renderCreate._prev ? '' : ' no-anim';
+  renderCreate._prev = step;
 
   // ── ШАГ 1: инфо ──
-  const pane1 = `<div class="wiz-pane">
+  const pane1 = `<div class="wiz-pane${paneAnim}">
     <div class="field"><div class="field-lab"><span class="mono">ОБЛОЖКА</span><span class="field-hint">фото или цвет</span></div>
       <div class="cover-preview ${F.cover_data?'':covCls(F.cover)}" id="cov-prev" ${prevStyle}>
         <div class="cover-preview-mark" id="cov-mark">${firstWord(F.title)||'NAME'}</div>
@@ -1133,7 +1161,7 @@ function renderCreate(){
   </div>`;
 
   // ── ШАГ 2: когда/где ──
-  const pane2 = `<div class="wiz-pane">
+  const pane2 = `<div class="wiz-pane${paneAnim}">
     ${recapCard(F)}
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ДАТА<span class="req">*</span></span></div>
@@ -1153,7 +1181,7 @@ function renderCreate(){
   </div>`;
 
   // ── ШАГ 3: условия ──
-  const pane3 = `<div class="wiz-pane">
+  const pane3 = `<div class="wiz-pane${paneAnim}">
     ${recapCard(F)}
     <div class="field"><div class="field-lab"><span class="mono">ЦЕНА, ₽</span><span class="field-hint">пусто = бесплатно</span></div>
       <div class="input-prefix" style="position:relative">
@@ -1210,6 +1238,7 @@ function renderCreate(){
       <button class="btn btn-primary wiz-next${valid[step]?'':' disabled'}" ${valid[step]?'':'disabled'} onclick="${nextAction}">${nextLabel}</button>
     </div>
   </div>`;
+  $screen.scrollTop = _sc;
 }
 function cancelEdit(){ EDIT_ID=null; FORM=blankForm(); go('profile'); }
 async function checkChannel(){
@@ -1233,40 +1262,47 @@ function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); docu
 /* выбор и сжатие своей обложки */
 function pickCover(input){
   const file = input.files && input.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = function(ev){
-    const img = new Image();
-    img.onload = function(){
-      const max = 900;
-      let w = img.width, h = img.height;
-      if(w>h && w>max){ h = Math.round(h*max/w); w = max; }
-      else if(h>=w && h>max){ w = Math.round(w*max/h); h = max; }
-      const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
-      cv.getContext('2d').drawImage(img,0,0,w,h);
-      FORM.cover_data = cv.toDataURL('image/jpeg', 0.82);
+  input.value = '';
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = function(){
+    URL.revokeObjectURL(url);
+    const max = 900;
+    let w = img.width, h = img.height;
+    if(w>h && w>max){ h = Math.round(h*max/w); w = max; }
+    else if(h>=w && h>max){ w = Math.round(w*max/h); h = max; }
+    const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    try{
+      const data = cv.toDataURL('image/jpeg', 0.82);
+      if(!data || data.length < 64){ toast('Не получилось сжать фото — попробуй другое',false); return; }
+      FORM.cover_data = data;
       haptic(); renderCreate();
-    };
-    img.onerror = function(){ toast('Не получилось открыть фото',false); };
-    img.src = ev.target.result;
+    }catch(e){ toast('Ошибка обработки фото',false); }
   };
-  reader.readAsDataURL(file);
+  img.onerror = function(){ URL.revokeObjectURL(url); toast('Не получилось открыть фото',false); };
+  img.src = url;
 }
 function pickExtraPhoto(input){
   const file = input.files && input.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = function(ev){
-    const img = new Image();
-    img.onload = function(){
-      const max = 900; let w=img.width,h=img.height;
-      if(w>h&&w>max){h=Math.round(h*max/w);w=max;} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
-      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-      cv.getContext('2d').drawImage(img,0,0,w,h);
-      FORM.photos_data.push(cv.toDataURL('image/jpeg',0.8));
+  input.value = '';
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = function(){
+    URL.revokeObjectURL(url);
+    const max = 900; let w=img.width,h=img.height;
+    if(w>h&&w>max){h=Math.round(h*max/w);w=max;} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+    cv.getContext('2d').drawImage(img,0,0,w,h);
+    try{
+      const data = cv.toDataURL('image/jpeg',0.8);
+      if(!data || data.length < 64){ toast('Не получилось сжать фото',false); return; }
+      FORM.photos_data.push(data);
       haptic(); renderCreate();
-    };
-    img.src = ev.target.result;
+    }catch(e){ toast('Ошибка обработки фото',false); }
   };
-  reader.readAsDataURL(file);
+  img.onerror = function(){ URL.revokeObjectURL(url); toast('Не получилось открыть фото',false); };
+  img.src = url;
 }
 function confirmPublish(){
   const F = FORM;
