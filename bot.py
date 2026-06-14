@@ -257,7 +257,7 @@ async def _send_welcome(message: Message) -> None:
     name = message.from_user.first_name or "Привет"
     await message.answer(
         f"<b>{name}, добро пожаловать в AFTERS</b> 🎉\n"
-        "Все вечеринки города — в одном месте.",
+        "Все вечеринки — в одном месте.",
         reply_markup=webapp_kb(),
     )
 
