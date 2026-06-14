@@ -274,8 +274,7 @@ async def cmd_help(message: Message) -> None:
 async def cmd_support(message: Message) -> None:
     await message.answer(
         "<b>Поддержка</b> 💬\n\n"
-        f"• Вопрос по работе бота — помощник: {config.SUPPORT_CONTACT}\n"
-        f"• Нашёл баг или жалоба — модератор: {config.MODERATOR_CONTACT}",
+        f"Нашёл баг или жалоба — пиши модератору: {config.MODERATOR_CONTACT}",
     )
 
 
