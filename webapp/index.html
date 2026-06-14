@@ -292,7 +292,8 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .city-kicker{font-family:var(--mono);font-size:11px;letter-spacing:1.4px;color:var(--text-2);text-transform:uppercase;}
 .city-title{font-family:var(--display);font-weight:900;font-size:52px;line-height:0.9;letter-spacing:-2px;margin:16px 0 0;text-transform:lowercase;}
 .city-sub{color:var(--text-2);font-size:14px;margin:12px 0 0;}
-.city-list{display:flex;flex-direction:column;gap:10px;}
+.city-search{margin:0 0 16px;}
+.city-list{display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .city-row{display:flex;align-items:center;gap:14px;padding:12px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);width:100%;}
 .city-row.on{border-color:var(--accent);background:rgba(255,61,90,.09);}
 .city-thumb{width:54px;height:54px;border-radius:12px;flex-shrink:0;overflow:hidden;}
@@ -474,17 +475,12 @@ let _ticketsCache = { data:null, ts:0 };
 const CACHE_TTL = 15000; // 15 сек
 
 const COVERS = ['ember','ultramarine','acid','violet','steel','rust','teal'];
+// 20 крупнейших городов РФ (поиск по списку в пикере города)
 const CITIES = [
-  { name:'Москва', tag:'столица движа', cover:'ember' },
-  { name:'Санкт-Петербург', tag:'культурная ночь', cover:'ultramarine' },
-  { name:'Сочи', tag:'море и вайб', cover:'teal' },
-  { name:'Краснодар', tag:'южный грув', cover:'acid' },
-  { name:'Ростов-на-Дону', tag:'дон и ритм', cover:'rust' },
-  { name:'Новосибирск', tag:'сибирский андеграунд', cover:'steel' },
-  { name:'Екатеринбург', tag:'уральский бит', cover:'violet' },
-  { name:'Казань', tag:'на берегу Волги', cover:'violet' },
-  { name:'Калининград', tag:'самый запад', cover:'acid' },
-  { name:'Владивосток', tag:'край у океана', cover:'steel' },
+  'Москва','Санкт-Петербург','Новосибирск','Екатеринбург','Казань',
+  'Нижний Новгород','Краснодар','Ростов-на-Дону','Самара','Уфа',
+  'Челябинск','Красноярск','Пермь','Воронеж','Волгоград',
+  'Тюмень','Сочи','Калининград','Владивосток','Омск',
 ];
 const DOW = ['ВС','ПН','ВТ','СР','ЧТ','ПТ','СБ'];
 const MON = ['ЯНВ','ФЕВ','МАР','АПР','МАЯ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];
@@ -1127,8 +1123,9 @@ function renderCreate(){
     </div>
     <div class="field"><div class="field-lab"><span class="mono">КОНЕЦ</span><span class="field-hint">необязательно</span></div>
       <input class="input" type="time" value="${esc(F.endtime)}" onchange="FORM.endtime=this.value"></div>
-    <div class="field"><div class="field-lab"><span class="mono">ГОРОД</span></div>
-      <div class="seg" style="flex-wrap:wrap">${CITIES.map(c=>`<button class="seg-opt${F.city===c.name?' on':''}" style="flex:0 0 auto;padding:9px 13px" onclick="FORM.city='${c.name}';renderCreate()">${c.name}</button>`).join('')}</div></div>
+    <div class="field"><div class="field-lab"><span class="mono">ГОРОД<span class="req">*</span></span><span class="field-hint">начни вводить</span></div>
+      <input class="input" list="city-options" placeholder="Москва" value="${esc(F.city)}" oninput="FORM.city=this.value">
+      <datalist id="city-options">${CITIES.map(c=>`<option value="${c}"></option>`).join('')}</datalist></div>
     <div class="field"><div class="field-lab"><span class="mono">РАЙОН / МЕТРО</span><span class="field-hint">видно всем</span></div>
       <input class="input" placeholder="м. Курская" value="${esc(F.area)}" oninput="FORM.area=this.value"></div>
     <div class="field"><div class="field-lab"><span class="mono">АДРЕС</span></div>
@@ -1689,21 +1686,31 @@ async function openCityPicker(){
         <h1 class="city-title">выбери<br>город</h1>
         <p class="city-sub">покажем party рядом с тобой</p>
       </div>
-      <div class="city-list">
-        <button class="city-row${CITY===ALL_CITIES?' on':''}" onclick="pickCity('${ALL_CITIES}')">
-          <div class="city-row-mid"><div class="city-name">Все города</div></div>
-          ${CITY===ALL_CITIES?`<span class="city-check">${I.check(15,'#fff')}</span>`:I.arrow(18,'var(--text-3)')}
-        </button>
-        ${CITIES.map(function(c){
-          const on = CITY===c.name;
-          return `<button class="city-row${on?' on':''}" onclick="pickCity('${c.name}')">
-            <div class="city-row-mid"><div class="city-name">${c.name}</div></div>
-            ${on?`<span class="city-check">${I.check(15,'#fff')}</span>`:I.arrow(18,'var(--text-3)')}
-          </button>`;
-        }).join('')}
-      </div>
+      <input class="input city-search" id="city-q" placeholder="Поиск города…" autocomplete="off" oninput="renderCityRows(this.value)">
+      <div class="city-list" id="city-list">${cityRowsHtml('')}</div>
     </div></div>`;
   $overlays.appendChild(ov);
+}
+function cityRowsHtml(q){
+  const norm = s => s.toLowerCase().replace('ё','е').trim();
+  const nq = norm(q);
+  const allRow = (!nq || 'все города'.includes(nq)) ? `
+    <button class="city-row${CITY===ALL_CITIES?' on':''}" onclick="pickCity('${ALL_CITIES}')">
+      <div class="city-row-mid"><div class="city-name">Все города</div></div>
+      ${CITY===ALL_CITIES?`<span class="city-check">${I.check(15,'#fff')}</span>`:I.arrow(18,'var(--text-3)')}
+    </button>` : '';
+  const rows = CITIES.filter(c=>!nq || norm(c).includes(nq)).map(function(c){
+    const on = CITY===c;
+    return `<button class="city-row${on?' on':''}" onclick="pickCity('${c}')">
+      <div class="city-row-mid"><div class="city-name">${c}</div></div>
+      ${on?`<span class="city-check">${I.check(15,'#fff')}</span>`:I.arrow(18,'var(--text-3)')}
+    </button>`;
+  }).join('');
+  return allRow + rows || `<div class="empty-sub" style="text-align:center;padding:24px 0">Город не найден</div>`;
+}
+function renderCityRows(q){
+  const box = document.getElementById('city-list');
+  if(box) box.innerHTML = cityRowsHtml(q);
 }
 function cityLabel(){ return CITY===ALL_CITIES ? 'все города' : (CITY||'город'); }
 function pickCity(name){
