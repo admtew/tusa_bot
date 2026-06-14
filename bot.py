@@ -266,7 +266,7 @@ async def _send_welcome(message: Message) -> None:
 async def cmd_help(message: Message) -> None:
     await message.answer(
         "<b>Нужна помощь?</b> 💬\n\n"
-        f"По техническим вопросам пиши администратору: {config.SUPPORT_CONTACT}",
+        f"По вопросам по приложению пиши помощнику: {config.SUPPORT_CONTACT}",
     )
 
 
@@ -274,7 +274,8 @@ async def cmd_help(message: Message) -> None:
 async def cmd_support(message: Message) -> None:
     await message.answer(
         "<b>Поддержка</b> 💬\n\n"
-        f"Есть вопрос или нашёл баг — пиши {config.SUPPORT_CONTACT}.",
+        f"• Вопрос по работе бота — помощник: {config.SUPPORT_CONTACT}\n"
+        f"• Нашёл баг или жалоба — модератор: {config.MODERATOR_CONTACT}",
     )
 
 
@@ -282,11 +283,11 @@ async def cmd_support(message: Message) -> None:
 async def cmd_faq(message: Message) -> None:
     await message.answer(
         "<b>Частые вопросы</b>\n\n"
-        "❓ <b>Как купить билет?</b>\n"
+        "❓ <b>Как получить билет?</b>\n"
         "Открой приложение, выбери событие, нажми «Купить билет» или «Получить билет» — "
-        "бот выдаст QR-код для входа.\n\n"
+        "билет появится у тебя во вкладке «Билеты».\n\n"
         "❓ <b>Где мой билет?</b>\n"
-        "Во вкладке «Билеты» в приложении. Покажи QR-код на входе.\n\n"
+        "Во вкладке «Билеты» в приложении — там его можно открыть и посмотреть.\n\n"
         "❓ <b>Зачем добавлять данные?</b>\n"
         "Данные нужны для оформления билета и напоминаний.\n\n"
         "🔒 <b>Ваши данные в безопасности</b>\n"
@@ -319,7 +320,7 @@ async def cmd_tickets(message: Message, bot: Bot) -> None:
             status = " ✅ использован"
         link = f"https://t.me/{me_username}?start=evt_{t['event_id']}"
         lines.append(f"• <a href=\"{link}\">{t['title']}</a> — {when}, {t['area'] or 'место уточняется'}{status}")
-    lines.append("\nОткрой приложение, чтобы увидеть QR-код 👇")
+    lines.append("\nОткрой приложение, чтобы посмотреть билеты 👇")
     await message.answer("\n".join(lines), reply_markup=webapp_kb("tickets", "Мои билеты 🎟"),
                          disable_web_page_preview=True)
 
@@ -585,7 +586,7 @@ async def send_reminders(bot: Bot) -> None:
             await bot.send_message(
                 t["user_id"],
                 f"Через пару часов начинаем! <b>{t['title']}</b> в {when} 🔥\n"
-                f"📍 {addr}\n\nПокажи QR-билет на входе.",
+                f"📍 {addr}",
                 reply_markup=webapp_kb("tickets", "Мой билет 🎟"),
             )
         except Exception as e:

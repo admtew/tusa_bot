@@ -966,27 +966,6 @@ async def h_approve(request: web.Request):
     return web.json_response({"ok": True})
 
 
-async def h_scan(request: web.Request):
-    """Сканер на входе: погасить билет по коду QR."""
-    me = request["user"]["id"]
-    body = await request.json()
-    t = db.get_ticket(body.get("code", ""))
-    if not t:
-        return web.json_response({"ok": False, "msg": "Билет не найден ❌"})
-    is_admin = me in config.ADMIN_IDS
-    if t["org_id"] != me and not is_admin:
-        return web.json_response({"ok": False, "msg": "Это билет не на твою тусу"})
-    name = t["first_name"] + (f" (@{t['username']})" if t["username"] else "")
-    if t["kind"] == "paid_pending":
-        return web.json_response({"ok": False, "msg": f"{name}: оплата НЕ подтверждена ⚠️"})
-    if t["status"] == "used":
-        return web.json_response({"ok": False, "msg": f"{name}: билет УЖЕ использован ⚠️"})
-    if t["status"] != "active":
-        return web.json_response({"ok": False, "msg": "Билет недействителен ❌"})
-    db.set_ticket_status(t["code"], "used")
-    return web.json_response({"ok": True, "msg": f"✅ {name} — проходит!"})
-
-
 # ---------- admin god-mode: управление билетами ----------
 
 def _require_admin(request) -> int:
@@ -1217,7 +1196,6 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/org/{id}/follow", h_org_follow),
         web.post("/api/org/{id}/verify", h_org_set_verify),
         web.post("/api/approve", h_approve),
-        web.post("/api/scan", h_scan),
         web.post("/api/admin/ticket/create", h_admin_create_ticket),
         web.post("/api/admin/refs", h_admin_set_refs),
         web.post("/api/admin/ticket/delete", h_admin_delete_ticket),

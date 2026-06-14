@@ -26,12 +26,15 @@ NEW_ID_THRESHOLD: int = int(os.getenv("NEW_ID_THRESHOLD", "0"))
 # За сколько часов до начала открывать адрес в приложении (напоминания шлются за 5ч и 2ч)
 ADDRESS_REVEAL_HOURS: int = int(os.getenv("ADDRESS_REVEAL_HOURS", "5"))
 
-# Контакт МОДЕРАТОРА/поддержки (показывается в /support и /help). Поменяй на свой.
+# Контакт ПОМОЩНИКА / поддержки (показывается в /support и /help). Поменяй на свой.
 SUPPORT_CONTACT: str = os.getenv("SUPPORT_CONTACT", "@workersant")
 
 # Контакт ВЛАДЕЛЬЦА проекта (показывается в /faq — вопросы сотрудничества/рекламы).
 # Если переменная не задана — подставляется SUPPORT_CONTACT.
 OWNER_CONTACT: str = os.getenv("OWNER_CONTACT", "") or SUPPORT_CONTACT
+
+# Контакт МОДЕРАТОРА (показывается для жалоб и багов). Если не задан — SUPPORT_CONTACT.
+MODERATOR_CONTACT: str = os.getenv("MODERATOR_CONTACT", "") or SUPPORT_CONTACT
 
 # Обязательная подписка на канал для доступа к боту (без @). Пусто = выключено.
 # ВАЖНО: бот должен быть АДМИНОМ этого канала, иначе проверка не работает.

@@ -8,8 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <style>
 :root{
   --bg:#0a0a0b; --surface:#141312; --surface-2:#1d1b18;
@@ -319,6 +317,9 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .qr-box{background:#fff;border-radius:16px;padding:14px;display:flex;align-items:center;justify-content:center;}
 .qr-addr{display:flex;align-items:center;gap:7px;margin:14px 0 0;padding:10px 14px;background:var(--surface-2);border-radius:11px;font-size:12.5px;color:var(--text-1);text-align:center;}
 .qr-note{font-family:var(--mono);font-size:10.5px;color:var(--text-3);margin-top:12px;text-transform:uppercase;}
+.ticket-badge{width:100%;background:var(--surface-2);border-radius:16px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;}
+.ticket-badge-t{font-family:var(--display);font-weight:800;font-size:17px;color:var(--text-0);margin-top:4px;}
+.ticket-badge-s{font-size:12.5px;color:var(--text-2);line-height:1.45;}
 
 /* sheets */
 .sheet{position:fixed;inset:0;z-index:55;background:var(--bg);animation:slideUp .3s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;}
@@ -337,9 +338,6 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 .admin-add-row{display:flex;gap:8px;margin-bottom:14px;}
 .admin-add-row input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--text-1);font-size:13px;font-family:var(--mono);}
 
-/* scanner */
-#reader{border-radius:16px;overflow:hidden;margin:16px;}
-.scan-result{margin:0 16px 12px;padding:14px;border-radius:13px;font-weight:600;text-align:center;display:none;}
 
 /* toast */
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:90;display:inline-flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text-0);padding:12px 18px;border-radius:13px;font-size:13px;font-weight:500;box-shadow:0 20px 50px -16px rgba(0,0,0,0.8);animation:toastIn .3s cubic-bezier(.2,.9,.3,1.1);max-width:88vw;text-align:center;}
@@ -506,7 +504,6 @@ let CITY = null;
 try { CITY = localStorage.getItem('tusa_city'); } catch(e){}
 let TAB = 'feed';
 let FILTER = { date:null, type:'все' };
-let scanner = null;
 let _isAdmin = false;
 
 /* кэш данных для мгновенного переключения табов */
@@ -785,7 +782,7 @@ async function openDetail(id){
   else if(hasTicket && e.my_ticket.status==='used') cta = `<button class="btn btn-have cta-go" disabled>Билет использован</button>`;
   else if(hasTicket) cta = `<button class="btn btn-have cta-go" onclick="closeDetail();go('tickets')">${I.check(18)} Билет получен · показать</button>`;
   else if(e.sold_out) cta = `<button class="btn btn-soldout cta-go" disabled>Мест нет</button>`;
-  else if(e.pay_url) cta = `<a class="btn btn-primary cta-go" href="${esc(buyUrl(e))}" target="_blank" onclick="buyClick(${e.id})">Купить билет ${I.arrow()}</a>`;
+  else if(e.pay_url) cta = `<button class="btn btn-primary cta-go" onclick="buyTicket(${e.id},'${encodeURIComponent(buyUrl(e))}')">Купить билет ${I.arrow()}</button>`;
   else if(e.refs_needed>0 && e.my_refs<e.refs_needed) cta = `<button class="btn btn-primary cta-go" onclick="shareRef('${e.ref_link}','${esc(e.title)}')">Позвать друзей ${I.arrow()}</button>`;
   else cta = `<button class="btn btn-primary cta-go" onclick="claimFree(${e.id})">Получить билет ${I.arrow()}</button>`;
 
@@ -1016,6 +1013,15 @@ function buyUrl(e){
 function buyClick(id){
   try{ api('/api/events/'+id+'/claim_paid',{method:'POST',body:'{}'}).catch(function(){}); }catch(e){}
 }
+/* открыть сайт оплаты сразу, без некрасивой ссылки-подтверждения */
+function buyTicket(id, encUrl){
+  const url = decodeURIComponent(encUrl || '');
+  buyClick(id);
+  haptic();
+  if(!url) return;
+  try{ if(tg && tg.openLink){ tg.openLink(url); return; } }catch(e){}
+  window.open(url, '_blank');
+}
 
 /* ───────── билеты ───────── */
 function ticketCard(t, i){
@@ -1026,14 +1032,14 @@ function ticketCard(t, i){
   const passed = t.event_status==='past' || t.status==='used';
   const tCovClass = t.has_cover ? 'cov-img' : covCls(t.cover);
   const tCovStyle = t.has_cover ? `style="background-image:url(/cover/${t.event_id}?v=${t.cover_ver||0});background-size:cover;background-position:center"` : '';
-  return `<button class="ticket glass${passed?' dim':''}" onclick="showQR(${i})">
+  return `<button class="ticket glass${passed?' dim':''}" onclick="showTicket(${i})">
     <div class="ticket-cover ${tCovClass}" ${tCovStyle}><div class="ticket-cover-mark">${t.has_cover?'':firstWord(t.title)}</div></div>
     <div class="ticket-notch top"></div><div class="ticket-notch bottom"></div>
     <div class="ticket-info">
       <div class="ticket-date">${f.dow} ${f.date} · ${timeRange(t)}</div>
       <div class="ticket-title">${esc(t.title)}</div>
       <div class="ticket-loc">${I.pin(13)} ${esc(t.area)}</div>
-      <div class="ticket-foot">${st}<span class="ticket-show">${I.qr()} открыть</span></div>
+      <div class="ticket-foot">${st}<span class="ticket-show">открыть</span></div>
     </div></button>`;
 }
 async function renderTickets(){
@@ -1060,29 +1066,31 @@ async function renderTickets(){
   }
   $screen.innerHTML = `
     <div class="screen-head"><h1 class="h-title">Билеты</h1>
-      <p class="h-sub">${ts.length} ${ts.length===1?'билет':(ts.length<5?'билета':'билетов')} · покажи QR на входе</p></div>
+      <p class="h-sub">${ts.length} ${ts.length===1?'билет':(ts.length<5?'билета':'билетов')}</p></div>
     <div class="ticket-list">${ts.map(ticketCard).join('')}</div>
     <div style="height:24px"></div>`;
 }
-function showQR(i){
+function showTicket(i){
   const t = (window.__TICKETS||[])[i]; if(!t) return;
   const f = fmt(t.starts_at);
   const wrap = document.createElement('div');
   wrap.className = 'modal-wrap';
   wrap.onclick = function(){ wrap.remove(); };
   const pending = t.kind==='paid_pending';
-  // билет через qtickets: настоящий билет выдаёт qtickets (на почту/в их боте), наш QR не нужен
   const isQt = t.qtickets && t.kind!=='free';
   let body;
   if(pending){
-    body = `<div class="empty-sub" style="margin:10px 0">Ждём подтверждения оплаты. Как только пройдёт — здесь появится билет.</div>`;
+    body = `<div class="ticket-badge wait">${I.clock(34,'#f39c12')}
+      <div class="ticket-badge-t">Ждём подтверждения оплаты</div>
+      <div class="ticket-badge-s">Как только оплата пройдёт — билет станет активным.</div></div>`;
   } else if(isQt){
-    body = `<div class="qr-box" style="background:var(--surface-2);width:190px;height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:18px">
-        ${I.check(34,'#2ecc71')}
-        <div style="font-size:13px;color:var(--text-1);line-height:1.45">Оплата прошла.<br>Билет придёт <b>от qtickets</b> на почту — его и покажешь на входе.</div>
-      </div>`;
+    body = `<div class="ticket-badge ok">${I.check(34,'#2ecc71')}
+      <div class="ticket-badge-t">Оплата прошла</div>
+      <div class="ticket-badge-s">Билет придёт <b>от qtickets</b> на почту.</div></div>`;
   } else {
-    body = `<div class="qr-box"><div id="qr-target"></div></div>`;
+    body = `<div class="ticket-badge ok">${I.check(34,'#2ecc71')}
+      <div class="ticket-badge-t">Билет активен</div>
+      <div class="ticket-badge-s">Ты в списке гостей — приходи на вечеринку.</div></div>`;
   }
   wrap.innerHTML = `<div class="qr-sheet" onclick="event.stopPropagation()">
     <button class="qr-close" onclick="this.closest('.modal-wrap').remove()">${I.close(20,'var(--text-2)')}</button>
@@ -1090,11 +1098,9 @@ function showQR(i){
     <div class="qr-when">${f.dow} ${f.date} · ${f.time}</div>
     ${body}
     <div class="qr-addr">${I.pin(14,'var(--accent)')}<span>${t.address?esc(t.address)+' · '+esc(t.area):esc(t.area)}</span></div>
-    ${pending?'':(isQt?'<div class="qr-note">вход по билету qtickets</div>':'<div class="qr-note">покажи этот код на входе</div>')}
     ${t.event_id?`<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="this.closest('.modal-wrap').remove();openDetail(${t.event_id})">Открыть событие</button>`:''}
   </div>`;
   document.body.appendChild(wrap);
-  if(!pending && !isQt) new QRCode(document.getElementById('qr-target'), {text:t.code, width:190, height:190});
 }
 
 /* ───────── создание ───────── */
@@ -1513,7 +1519,6 @@ function renderMine(mine){
           <button class="btn btn-ghost sm" onclick="editEvent(${p.id})">Изменить</button>
           ${live?`<button class="btn btn-ghost sm" onclick="toggleSoldout(${p.id},${p.soldout_flag?1:0})">${p.soldout_flag?'Снова в продаже':'Распродано'}</button>`:''}
           <button class="btn btn-ghost sm" onclick="openGuests(${p.id})">Гости</button>
-          <button class="btn btn-ghost sm" onclick="openScanner(${p.id})">Сканер</button>
           ${live?`<button class="btn btn-ghost sm" onclick="shareEventById(${p.id},'${esc(p.title)}')">${I.share(15,'var(--text-2)')}</button>`:''}
           ${live?`<button class="btn btn-ghost sm" onclick="openBroadcast(${p.id},'${esc(p.title)}')">Рассылка</button>`:''}
           <button class="btn btn-ghost sm" onclick="reschedule(${p.id})">Перенести</button>
@@ -1697,7 +1702,6 @@ async function openGuests(id){
       <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
     <div class="sheet-body">
       ${addRow}
-      <button class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="this.closest('.sheet').remove();openScanner(${id})">${I.camera()} Сканер на входе</button>
       <div style="font-family:var(--mono);font-size:12px;color:var(--text-3);margin-bottom:10px">Всего: ${guests.length}</div>
       ${guests.length?guests.map(function(g){
         return `<div class="guest-row" style="flex-direction:column;align-items:stretch">
@@ -1743,38 +1747,6 @@ async function adminAddTicket(eventId){
     const s=document.getElementById('guests-sheet'); if(s) s.remove();
     openGuests(eventId);
   } catch(e){ toast(e.message,false); }
-}
-
-/* ───────── сканер ───────── */
-function openScanner(id){
-  const sh = document.createElement('div');
-  sh.className = 'sheet'; sh.id = 'scan-sheet';
-  sh.innerHTML = `
-    <div class="sheet-head"><div class="sheet-title">Сканер</div>
-      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="closeScanner()">${I.close(20,'var(--text-1)')}</button></div>
-    <div id="reader"></div>
-    <div class="scan-result" id="scan-result"></div>
-    <div class="empty-sub" style="text-align:center;margin:0 auto;padding:0 30px">Наводи камеру на QR-билет гостя</div>`;
-  $overlays.appendChild(sh);
-  scanner = new Html5Qrcode("reader");
-  let busy = false;
-  scanner.start({facingMode:"environment"},{fps:10,qrbox:230}, async function(text){
-    if(busy) return; busy = true;
-    try{
-      const r = await api('/api/scan',{method:'POST',body:JSON.stringify({code:text})});
-      const el = document.getElementById('scan-result');
-      if(el){ el.style.display='block';
-        el.style.background = r.ok?'rgba(46,204,113,.14)':'rgba(231,76,60,.14)';
-        el.style.color = r.ok?'#2ecc71':'#e74c3c';
-        el.textContent = r.msg; }
-      haptic(r.ok?'success':'error');
-    }catch(e){ toast(e.message,false); }
-    setTimeout(function(){ busy=false; }, 1400);
-  }, function(){}).catch(function(e){ toast('Камера недоступна',false); });
-}
-function closeScanner(){
-  if(scanner){ scanner.stop().catch(function(){}); scanner=null; }
-  const s = document.getElementById('scan-sheet'); if(s) s.remove();
 }
 
 /* ───────── qtickets: подключение и превью ───────── */
