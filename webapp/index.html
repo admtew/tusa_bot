@@ -803,7 +803,6 @@ async function openDetail(id){
           <button class="btn btn-ghost sm" onclick="toggleSoldout(${e.id},${e.soldout_flag?1:0})">${e.soldout_flag?'Снова в продаже':'Распродано'}</button>
           <button class="btn btn-ghost sm" onclick="openGuests(${e.id})">Гости</button>
           <button class="btn btn-ghost sm" onclick="grantTicket(${e.id})">Выдать билет</button>
-          ${e.refs_needed>0?`<button class="btn btn-ghost sm" onclick="setRefs(${e.id})">Друзья</button>`:''}
           <button class="btn btn-ghost sm" onclick="openBroadcast(${e.id},'${esc(e.title)}')">Рассылка</button>
           <button class="btn btn-ghost sm" onclick="reschedule(${e.id})">Перенести</button>
           <button class="btn btn-ghost sm" onclick="openOrgProfile(${e.org_id})">Профиль орга</button>
@@ -875,7 +874,7 @@ async function openOrgProfile(id){
       ${!o.is_self?`<button class="btn ${o.following?'btn-ghost':'btn-primary'}" style="width:100%;margin-top:14px" id="follow-btn" onclick="toggleFollow(${o.id},${o.following})">${o.following?'Вы подписаны ✓':'Подписаться на организатора'}</button>
         <div class="field-hint" style="text-align:center;margin-top:6px">${o.following?'будешь получать новые события первым':'получай уведомления о новых событиях'}</div>`:''}
       ${o.is_admin_view?`<button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="adminSetVerify(${o.id},${!o.verified})">${o.verified?'Снять галочку доверия':'Выдать галочку доверия'}</button>`:''}
-      ${o.is_admin_view?`<div class="ref-sub" style="margin-top:12px">На AFTERS с ${since.toLocaleDateString('ru-RU')} · qtickets: ${o.qtickets?'подключён':'нет'} · статус: ${o.verified?'проверенный':'не проверен'}</div>`:''}
+      ${o.is_admin_view?`<div class="ref-sub" style="margin-top:12px">На AFTERS с ${since.toLocaleDateString('ru-RU')} · статус: ${o.verified?'проверенный':'не проверен'}</div>`:''}
     </div>
     <div class="my-list" style="padding-top:14px">
       ${o.events.length?o.events.map(function(e){
@@ -909,9 +908,6 @@ async function reportEvent(id){
   if(tg.showConfirm) tg.showConfirm('Пожаловаться на это событие? Модераторы проверят.', function(ok){ if(ok) send(''); });
   else if(confirm('Пожаловаться?')) send('');
 }
-function shareRef(link, title){
-  tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Го на «'+title+'»! Заходи по моей ссылке:'));
-}
 function shareEvent(link, title){
   tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('Смотри какая party: '+title));
 }
@@ -940,18 +936,12 @@ async function cancelAttend(id){
     toast('Убрали из планов'); openDetail(id); }
   catch(err){ toast(err.message,false); }
 }
-/* ссылка оплаты с меткой tg_id, чтобы бот сам сопоставил оплату */
-function buyUrl(e){
-  const url = e.pay_url || '';
-  if(!ME.id) return url;
-  const sep = url.indexOf('?')>=0 ? '&' : '?';
-  return url + sep + 'utm_medium=tusa&utm_content=' + ME.id;
-}
-/* при переходе на оплату — тихо добавляем в участники (чтобы пришло напоминание) */
+function buyUrl(e){ return e.pay_url || ''; }
+/* при переходе по ссылке — тихо добавляем в участники (чтобы пришло напоминание) */
 function buyClick(id){
   try{ api('/api/events/'+id+'/attend',{method:'POST',body:'{}'}).catch(function(){}); }catch(e){}
 }
-/* открыть сайт оплаты сразу, без некрасивой ссылки-подтверждения */
+/* открыть сайт билетов сразу, без некрасивой ссылки-подтверждения */
 function buyTicket(id, encUrl){
   const url = decodeURIComponent(encUrl || '');
   buyClick(id);
@@ -1014,22 +1004,9 @@ function showTicket(i){
   const wrap = document.createElement('div');
   wrap.className = 'modal-wrap';
   wrap.onclick = function(){ wrap.remove(); };
-  const pending = t.kind==='paid_pending';
-  const isQt = t.qtickets && t.kind!=='free';
-  let body;
-  if(pending){
-    body = `<div class="ticket-badge wait">${I.clock(34,'#f39c12')}
-      <div class="ticket-badge-t">Ждём подтверждения оплаты</div>
-      <div class="ticket-badge-s">Как только оплата пройдёт — билет станет активным.</div></div>`;
-  } else if(isQt){
-    body = `<div class="ticket-badge ok">${I.check(34,'#2ecc71')}
-      <div class="ticket-badge-t">Оплата прошла</div>
-      <div class="ticket-badge-s">Билет придёт <b>от qtickets</b> на почту.</div></div>`;
-  } else {
-    body = `<div class="ticket-badge ok">${I.check(34,'#2ecc71')}
-      <div class="ticket-badge-t">Билет активен</div>
+  const body = `<div class="ticket-badge ok">${I.check(34,'#2ecc71')}
+      <div class="ticket-badge-t">Ты идёшь</div>
       <div class="ticket-badge-s">Ты в списке гостей — приходи на вечеринку.</div></div>`;
-  }
   wrap.innerHTML = `<div class="qr-sheet" onclick="event.stopPropagation()">
     <button class="qr-close" onclick="this.closest('.modal-wrap').remove()">${I.close(20,'var(--text-2)')}</button>
     <div class="qr-event">${esc(t.title)}</div>
@@ -1240,31 +1217,13 @@ function renderCreate(){
       </div></div>
     <div class="field"><div class="field-lab"><span class="mono">ПРОМОКОД</span><span class="field-hint">скидочный код для гостей</span></div>
       <input class="input" placeholder="PROMO2024" value="${esc(F.promo_code)}" oninput="FORM.promo_code=this.value" maxlength="40"></div>
-    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА QTICKETS</span><span class="field-hint">если платно через qtickets</span></div>
-      <input class="input" id="f-payurl" placeholder="https://qtickets.ru/event/…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
-      <div class="field" style="margin-top:-8px">
-        <button class="btn btn-ghost" style="width:100%" onclick="previewQtickets()">Подтянуть из qtickets</button>
-        <div id="qt-types"></div>
-      </div>
+    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА НА БИЛЕТЫ</span><span class="field-hint">если платно — куда вести гостя</span></div>
+      <input class="input" inputmode="url" placeholder="https://…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ЛИМИТ МЕСТ</span><span class="field-hint">0 = без лимита</span></div>
         <div class="stepper"><button onclick="stepCap(-10)">−</button><input class="step-input" id="f-cap" inputmode="numeric" value="${F.capacity}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.capacity=+this.value||0"><button onclick="stepCap(10)">+</button></div></div>
       <div class="field"><div class="field-lab"><span class="mono">ВОЗРАСТ</span></div>
         <div class="seg">${['14+','18+'].map(a=>`<button class="seg-opt${F.age_limit===a?' on':''}" onclick="FORM.age_limit='${a}';renderCreate()">${a}</button>`).join('')}</div></div>
-    </div>
-    <div class="ref-card">
-      <div class="ref-title">Вход за репост / приглашения <span class="field-hint" style="font-family:var(--sans)">(free)</span></div>
-      <div class="ref-sub" style="margin-bottom:12px">Гость проходит бесплатно, если подпишется на твой канал и приведёт N друзей по своей ссылке. 0 друзей = достаточно подписки.</div>
-      <div class="field-grid" style="padding:0">
-        <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ДРУЗЕЙ ДЛЯ FREE</span><span class="field-hint">0 = выкл</span></div>
-          <div class="stepper"><button onclick="stepRefs(-1)">−</button><input class="step-input" id="f-refs" inputmode="numeric" value="${F.refs_needed}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.refs_needed=+this.value||0"><button onclick="stepRefs(1)">+</button></div></div>
-        <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ТВОЙ КАНАЛ</span><span class="field-hint">без @</span></div>
-          <input class="input" id="f-channel" placeholder="your_channel" value="${esc(F.channel)}" oninput="FORM.channel=this.value.replace('@','')"></div>
-      </div>
-      <div style="height:10px"></div>
-      <button class="btn btn-ghost" style="width:100%" onclick="checkChannel()">Проверить бота в канале</button>
-      <div id="chan-status"></div>
-      <div class="field-hint" style="margin-top:8px;line-height:1.45">⚠️ Чтобы бот проверял подписку, добавь его <b>администратором</b> канала.</div>
     </div>
   </div>`;
 
@@ -1291,24 +1250,8 @@ function renderCreate(){
   $screen.scrollTop = _sc;
 }
 function cancelEdit(){ EDIT_ID=null; FORM=blankForm(); go('profile'); }
-async function checkChannel(){
-  const ch = ((document.getElementById('f-channel')||{}).value || FORM.channel || '').replace('@','').trim();
-  const box = document.getElementById('chan-status');
-  if(!ch){ toast('Сначала впиши канал',false); return; }
-  box.innerHTML = '<div class="field-hint" style="margin-top:8px">Проверяю…</div>';
-  try{
-    const r = await api('/api/channel/check',{method:'POST',body:JSON.stringify({channel:ch})});
-    if(r.bot_admin){
-      box.innerHTML = `<div class="field-hint" style="margin-top:8px;color:#2ecc71">✓ Бот админ в @${esc(ch)} — проверка подписки работает.</div>`;
-      haptic();
-    } else {
-      box.innerHTML = `<div class="lock-note" style="margin-top:8px">${I.lock(15)}<span>Бот пока не админ в <b>@${esc(ch)}</b>. Открой канал → Управление → Администраторы → добавь <b>@${esc(r.bot||BOT)}</b> и нажми «Проверить» снова.</span></div>`;
-    }
-  }catch(e){ box.innerHTML = `<div class="field-hint" style="margin-top:8px">${esc(e.message)}</div>`; }
-}
 function setCover(k){ FORM.cover=k; FORM.cover_data=''; FORM.cover_url=''; renderCreate(); }
 function stepCap(d){ FORM.capacity=Math.max(0,(FORM.capacity||0)+d); document.getElementById('f-cap').value=FORM.capacity; }
-function stepRefs(d){ FORM.refs_needed=Math.max(0,(FORM.refs_needed||0)+d); document.getElementById('f-refs').value=FORM.refs_needed; }
 /* выбор и сжатие своей обложки */
 function pickCover(input){
   const file = input.files && input.files[0]; if(!file) return;
@@ -1402,12 +1345,11 @@ async function renderProfile(){
   $screen.innerHTML = skeleton('feed');
   let mine=[], ts=[], qt={connected:false};
   try {
-    const r = await Promise.all([api('/api/me/events'), api('/api/me/tickets'), api('/api/qtickets/status')]);
+    const r = await Promise.all([api('/api/me/events'), api('/api/me/tickets'), api('/api/me/status')]);
     mine=r[0]; ts=r[1]; qt=r[2];
   } catch(e){ $screen.innerHTML=''; toast(e.message,false); return; }
   if(TAB!=='profile') return;
   window.__TICKETS = ts;
-  window.__QT_CONNECTED = qt.connected;
   const guests = mine.reduce(function(a,p){ return a+(p.taken||0); },0);
   $screen.innerHTML = `
     <div class="profile-head">
@@ -1431,7 +1373,7 @@ async function renderProfile(){
       <button class="seg-opt${PSEG==='host'?' on':''}" onclick="PSEG='host';renderProfile()">Организую</button>
       <button class="seg-opt${PSEG==='going'?' on':''}" onclick="PSEG='going';renderProfile()">Я иду</button>
     </div>
-    ${PSEG==='host' ? (verifyCard(qt.verified) + qtCard(qt.connected) + renderMine(mine)) : renderGoing(ts)}
+    ${PSEG==='host' ? (verifyCard(qt.verified) + renderMine(mine)) : renderGoing(ts)}
     <button class="id-chip" onclick="copyMyId()" title="Скопировать">ID: ${ME.id||'—'} · нажми, чтобы скопировать</button>
     <div style="height:24px"></div>`;
 }
@@ -1464,24 +1406,6 @@ async function requestVerify(btn){
     haptic(); toast(r.already?'Ты уже проверен ✓':'Заявка отправлена модератору ✓');
     if(btn) btn.textContent='Заявка отправлена'; }
   catch(e){ toast(e.message,false); if(btn){ btn.disabled=false; btn.textContent='Подать заявку'; } }
-}
-function qtCard(connected){
-  return `<div class="ref-card" style="margin:14px 16px 0">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-      <div>
-        <div class="ref-title">qtickets ${connected?'<span style="color:#2ecc71">подключён ✓</span>':'<span style="color:var(--text-3)">не подключён</span>'}</div>
-        <div class="ref-sub">${connected
-          ? 'Все твои мероприятия из qtickets подтягиваются автоматически, а гости и оплаты видны в одном месте.'
-          : 'Для организаторов: подключи API из qtickets один раз — и все твои мероприятия будут видны в боте, участники собраны в гостевой список, а билет гостю придёт автоматически после оплаты.'}</div>
-      </div>
-    </div>
-    <div style="height:10px"></div>
-    ${connected
-      ? `<button class="btn btn-primary" style="width:100%" onclick="syncQtickets(this)">Синхронизировать события</button>
-         <div style="height:8px"></div>
-         <button class="btn btn-ghost" style="width:100%" onclick="disconnectQtickets()">Отключить qtickets</button>`
-      : `<button class="btn btn-primary" style="width:100%" onclick="openQtConnect()">Подключить qtickets</button>`}
-  </div>`;
 }
 function renderMine(mine){
   if(!mine.length) return `<div class="empty">
@@ -1590,34 +1514,6 @@ async function doGrant(id){
   try{ await api('/api/admin/ticket/create',{method:'POST',body:JSON.stringify({event_id:id,user_id:uid,kind:kind})});
     haptic(); const s=document.getElementById('grant-sheet'); if(s) s.remove();
     toast('Билет выдан — пользователь получит уведомление'); }
-  catch(e){ toast(e.message,false); }
-}
-/* ── модератор: задать счётчик приглашённых ── */
-function setRefs(id){
-  const sh = document.createElement('div');
-  sh.className = 'sheet'; sh.id = 'refs-sheet';
-  sh.innerHTML = `
-    <div class="sheet-head"><div class="sheet-title">Счётчик друзей</div>
-      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
-    <div class="sheet-body">
-      <div class="ref-sub" style="margin-bottom:14px">Задай, сколько приглашённых засчитать пользователю на это событие (итоговое число). Используется, если рефералы не засчитались автоматически.</div>
-      <div class="field" style="padding:0"><div class="field-lab"><span class="mono">ID ПОЛЬЗОВАТЕЛЯ</span></div>
-        <input class="input" type="number" inputmode="numeric" id="refs-uid" placeholder="123456789"></div>
-      <div class="field" style="padding:10px 0 0"><div class="field-lab"><span class="mono">СКОЛЬКО ДРУЗЕЙ</span></div>
-        <input class="input" type="number" inputmode="numeric" id="refs-val" placeholder="например 3"></div>
-      <div style="height:14px"></div>
-      <button class="btn btn-primary" style="width:100%" onclick="doSetRefs(${id})">Сохранить</button>
-    </div>`;
-  $overlays.appendChild(sh);
-}
-async function doSetRefs(id){
-  const uid = parseInt(document.getElementById('refs-uid').value||'0',10);
-  const val = parseInt(document.getElementById('refs-val').value||'0',10);
-  if(!uid){ toast('Укажи ID пользователя',false); return; }
-  if(val<0||isNaN(val)){ toast('Некорректное число',false); return; }
-  try{ const r = await api('/api/admin/refs',{method:'POST',body:JSON.stringify({event_id:id,user_id:uid,value:val})});
-    haptic(); const s=document.getElementById('refs-sheet'); if(s) s.remove();
-    toast('Засчитано приглашённых: '+r.value); }
   catch(e){ toast(e.message,false); }
 }
 function openBroadcast(id, title){
@@ -1735,87 +1631,6 @@ async function adminAddTicket(eventId){
     const s=document.getElementById('guests-sheet'); if(s) s.remove();
     openGuests(eventId);
   } catch(e){ toast(e.message,false); }
-}
-
-/* ───────── qtickets: подключение и превью ───────── */
-function openQtConnect(){
-  const sh = document.createElement('div');
-  sh.className = 'sheet'; sh.id = 'qt-sheet';
-  sh.innerHTML = `
-    <div class="sheet-head"><div class="sheet-title">Подключить qtickets</div>
-      <button class="glass-btn" style="background:var(--surface);border-color:var(--line)" onclick="this.closest('.sheet').remove()">${I.close(20,'var(--text-1)')}</button></div>
-    <div class="sheet-body">
-      <div class="ref-sub" style="line-height:1.55;margin-bottom:16px">
-        Где взять токен: зайди на <b>qtickets.app</b> → «Настройки» → «Основное» → внизу страницы <b>API-токен</b>. Скопируй и вставь сюда. Делается один раз — дальше все твои платные party работают сами.
-      </div>
-      <input class="input" id="qt-token" placeholder="Вставь API-токен" autocomplete="off">
-      <div style="height:14px"></div>
-      <button class="btn btn-primary" style="width:100%" id="qt-save" onclick="saveQtToken()">Подключить</button>
-    </div>`;
-  $overlays.appendChild(sh);
-}
-async function saveQtToken(){
-  const inp = document.getElementById('qt-token');
-  const token = (inp.value||'').trim();
-  if(!token){ toast('Вставь токен',false); return; }
-  const btn = document.getElementById('qt-save');
-  btn.disabled = true; btn.textContent = 'Проверяю…';
-  try{
-    const r=await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:token})});
-    haptic(); const s=document.getElementById('qt-sheet'); if(s) s.remove();
-    toast(r.imported>0 ? ('qtickets подключён ✓ Импортировано событий: '+r.imported) : 'qtickets подключён ✓');
-    renderProfile();
-  }catch(e){ toast(e.message,false); btn.disabled=false; btn.textContent='Подключить'; }
-}
-async function disconnectQtickets(){
-  try{ await api('/api/qtickets/connect',{method:'POST',body:JSON.stringify({token:''})});
-    toast('qtickets отключён'); renderProfile(); }
-  catch(e){ toast(e.message,false); }
-}
-async function syncQtickets(btn){
-  if(btn){ btn.disabled=true; btn.textContent='Синхронизирую…'; }
-  try{ const r=await api('/api/qtickets/import',{method:'POST',body:'{}'});
-    haptic(); toast(r.imported>0?('Добавлено событий: '+r.imported):'Новых событий нет'); renderProfile(); }
-  catch(e){ toast(e.message,false); if(btn){ btn.disabled=false; btn.textContent='Синхронизировать события'; } }
-}
-async function previewQtickets(){
-  const url = (document.getElementById('f-payurl')||{}).value || FORM.pay_url;
-  const box = document.getElementById('qt-types');
-  if(!url){ toast('Сначала вставь ссылку qtickets',false); return; }
-  box.innerHTML = '<div class="field-hint" style="margin-top:10px">Загружаю тарифы…</div>';
-  try{
-    const r = await api('/api/qtickets/preview',{method:'POST',body:JSON.stringify({url:url})});
-    // автозаполнение пустых полей из qtickets (не перезатираем то, что ты уже ввёл)
-    const fl = r.fields||{}; let filled=false; const pad=n=>String(n).padStart(2,'0');
-    if(fl.title && !FORM.title){ FORM.title=fl.title; filled=true; }
-    if(fl.description && !FORM.description){ FORM.description=fl.description; filled=true; }
-    if(fl.area && !FORM.area){ FORM.area=fl.area; filled=true; }
-    if(fl.address && !FORM.address){ FORM.address=fl.address; filled=true; }
-    if(fl.price_text && !FORM.price_num){ FORM.price_num=(fl.price_text.match(/\d+/g)||[]).join(''); filled=true; }
-    if(fl.starts_at){ const d=new Date(fl.starts_at*1000);
-      if(!FORM.date){ FORM.date=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; filled=true; }
-      if(FORM.time==='18:00'){ FORM.time=`${pad(d.getHours())}:${pad(d.getMinutes())}`; filled=true; } }
-    if(fl.ends_at && !FORM.endtime){ const x=new Date(fl.ends_at*1000); FORM.endtime=`${pad(x.getHours())}:${pad(x.getMinutes())}`; filled=true; }
-    const typesHtml = (r.types && r.types.length)
-      ? '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">' +
-        r.types.map(function(t){ return `<div style="display:flex;justify-content:space-between;background:var(--surface-2);border-radius:10px;padding:9px 12px;font-size:13px"><span>${esc(t.name)}</span><span class="mono" style="color:var(--text-1)">${(t.price||0).toLocaleString('ru-RU')} ₽</span></div>`; }).join('') +
-        '</div><div class="field-hint" style="margin-top:8px;color:#2ecc71">✓ Привязано. Бот поймает оплату и распроданность автоматически.</div>'
-      : '<div class="field-hint" style="margin-top:10px">Тарифы не нашлись — проверь ссылку или настрой билеты в qtickets.</div>';
-    if(filled){
-      haptic();
-      renderCreate();                                  // перерисовали форму с заполненными полями
-      const b=document.getElementById('qt-types'); if(b) b.innerHTML = typesHtml + '<div class="field-hint" style="margin-top:6px;color:#2ecc71">✓ Поля заполнены из qtickets</div>';
-      return;
-    }
-    box.innerHTML = typesHtml;
-    haptic();
-  }catch(err){
-    if(err.data && err.data.need==='connect'){
-      box.innerHTML = '<div class="field-hint" style="margin-top:10px">Сначала подключи qtickets в профиле (вкладка «Профиль»).</div>';
-    } else {
-      box.innerHTML = `<div class="field-hint" style="margin-top:10px">${esc(err.message)}</div>`;
-    }
-  }
 }
 
 /* ───────── выбор города ───────── */

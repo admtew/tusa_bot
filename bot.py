@@ -134,61 +134,18 @@ async def start_deeplink(message: Message, command: CommandObject, bot: Bot) -> 
         await send_gate(message)
         return
 
-    # --- реферальная ссылка: ref_<event_id>_<referrer_id> ---
+    # --- старые ссылки-приглашения ref_<event_id>_<...>: просто открываем событие ---
     if payload.startswith("ref_"):
         try:
-            _, eid, rid = payload.split("_", 2)
-            event_id, referrer_id = int(eid), int(rid)
-        except ValueError:
-            await message.answer("Ссылка битая. Но все party — тут 👇", reply_markup=webapp_kb())
+            event_id = int(payload.split("_", 2)[1])
+        except (ValueError, IndexError):
+            event_id = 0
+        if event_id and db.get_event(event_id):
+            await message.answer(
+                f"<b>{user.first_name}, тебя зовут на party</b> 🎉\nЖми кнопку — детали внутри.",
+                reply_markup=webapp_kb(f"event/{event_id}"))
             return
-
-        event = db.get_event(event_id)
-        if not event:
-            await message.answer("Этой party уже нет 😢 Но есть другие 👇", reply_markup=webapp_kb())
-            return
-
-        counted = False
-        reason = ""
-        if referrer_id == user.id:
-            reason = "сам себя пригласить нельзя"
-        elif config.NEW_ID_THRESHOLD and user.id > config.NEW_ID_THRESHOLD:
-            reason = "аккаунт отсечён антифродом по ID"
-        else:
-            counted = db.add_referral(event_id, referrer_id, user.id)
-            if not counted:
-                reason = "этот человек уже был засчитан на это событие"
-
-        text = (
-            f"<b>{user.first_name}, тебя зовут на «{event['title']}»</b> 🎉\n\n"
-            "Жми кнопку — детали и твой билет внутри."
-        )
-        if counted:
-            text += "\n\nТот, кто тебя позвал, стал ближе к free-проходке 🔥"
-            # уведомляем пригласившего, чтобы он сразу видел прогресс
-            try:
-                all_refs = db.referrals_of(event_id, referrer_id)
-                valid = 0
-                if event["channel"]:
-                    for r in all_refs:
-                        if await check_subscribed(bot, event["channel"], r["referred_id"]):
-                            valid += 1
-                else:
-                    valid = len(all_refs)
-                need = event["refs_needed"] or 0
-                msg = (f"🔥 <b>{user.first_name} присоединился по твоей ссылке</b>\n"
-                       f"«{event['title']}» — прогресс: {valid}")
-                if need:
-                    msg += f" из {need}"
-                    if valid >= need:
-                        msg += "\n\nМожно забирать free-билет! 🎟"
-                await bot.send_message(referrer_id, msg,
-                                       reply_markup=webapp_kb(f"event/{event_id}"))
-            except Exception as e:
-                log.warning("notify referrer %s failed: %s", referrer_id, e)
-        elif reason:
-            log.info("referral not counted for %s: %s", user.id, reason)
-        await message.answer(text, reply_markup=webapp_kb(f"event/{event_id}"))
+        await message.answer("Этой party уже нет 😢 Но есть другие 👇", reply_markup=webapp_kb())
         return
 
     # --- прямая ссылка на ивент: evt_<event_id> ---
@@ -627,11 +584,10 @@ async def main() -> None:
     await site.start()
     log.info("Mini App server on port %s", config.PORT)
 
-    # планировщик: напоминания + опрос qtickets + авто-перевод прошедших в past
-    from api import poll_qtickets_payments, _rate, _rate_write
+    # планировщик: напоминания + авто-перевод прошедших в past
+    from api import _rate, _rate_write
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", minutes=5, args=[bot])
-    scheduler.add_job(poll_qtickets_payments, "interval", minutes=2, args=[bot])
     scheduler.add_job(lambda: db.mark_past_events(), "interval", minutes=10)
     scheduler.add_job(lambda: db.purge_old_proofs(), "interval", hours=6)  # приватность: чистим скрины
     scheduler.add_job(lambda: (_rate.cleanup(), _rate_write.cleanup()), "interval", minutes=10)

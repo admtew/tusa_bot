@@ -13,7 +13,6 @@ from aiohttp import web
 import config
 import db
 import notify
-import qtickets
 
 log = logging.getLogger("tusa.api")
 WEBAPP_DIR = Path(__file__).parent / "webapp"
@@ -234,34 +233,18 @@ async def h_event(request: web.Request):
     me = request["user"]["id"]
     data = event_json(e, me)
 
-    # мой билет и прогресс рефералки
+    # иду ли я на событие
     t = db.get_user_ticket(e["id"], me)
     data["my_ticket"] = (
         {"code": t["code"], "kind": t["kind"], "status": t["status"]} if t else None
     )
-    refs = db.referrals_of(e["id"], me)
-
-    bot = request.app["bot"]
-    from bot import check_subscribed  # локальный импорт, чтобы не плодить циклы
-
-    # подсчёт валидных рефералов (с проверкой подписки на канал, если задан)
-    if e["channel"]:
-        valid_refs = 0
-        for r in refs:
-            if await check_subscribed(bot, e["channel"], r["referred_id"]):
-                valid_refs += 1
-        data["my_refs"] = valid_refs + db.get_referral_bonus(e["id"], me)
-    else:
-        data["my_refs"] = len(refs) + db.get_referral_bonus(e["id"], me)
-
-    data["subscribed"] = await check_subscribed(bot, e["channel"], me)
     data["address"] = e["address"]
     data["is_admin"] = me in config.ADMIN_IDS
+    bot = request.app["bot"]
     app = request.app
     if "bot_username" not in app:
         app["bot_username"] = (await bot.get_me()).username
     me_username = app["bot_username"]
-    data["ref_link"] = f"https://t.me/{me_username}?start=ref_{e['id']}_{me}"
     data["share_link"] = f"https://t.me/{me_username}?start=evt_{e['id']}"
     return web.json_response(data)
 
@@ -301,7 +284,7 @@ async def _notify_admins_new(bot, event_id: int, title: str, org: str, warn: str
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     if e:
         when = datetime.datetime.fromtimestamp(e["starts_at"]).strftime("%d.%m.%Y %H:%M")
-        price = e["price_text"] or ("ссылка qtickets" if e["pay_url"] else "free")
+        price = e["price_text"] or ("по ссылке" if e["pay_url"] else "free")
         lines = [
             "🆕 <b>На модерацию</b>",
             f"<b>{e['title']}</b>",
@@ -364,9 +347,6 @@ async def h_create_event(request: web.Request):
     active_count = len([e for e in db.org_events(me) if e["status"] in ("active", "pending")])
     if active_count >= 20:
         return web.json_response({"error": "Лимит: не более 20 активных событий"}, status=400)
-    # привязка к qtickets: достаём id события из ссылки оплаты
-    if body.get("pay_url"):
-        body["qt_event_id"] = qtickets.parse_event_id(body["pay_url"])
     cover_img = _decode_cover(body.get("cover_data", ""))
     # антифрод (этап 5): дубль чужого события
     dup = db.find_duplicate_event(body["title"], int(body["starts_at"]),
@@ -408,9 +388,6 @@ async def h_edit_event(request: web.Request):
         return web.json_response({"error": "слишком длинное название"}, status=400)
     if body.get("starts_at") and int(body["starts_at"]) <= time.time():
         return web.json_response({"error": "Дата должна быть в будущем"}, status=400)
-    # привязка qtickets, если поменяли ссылку
-    if "pay_url" in body:
-        body["qt_event_id"] = qtickets.parse_event_id(body.get("pay_url", ""))
     # обложка: меняем только если прислали новую (set_cover) или явно сбросили
     set_cover = "cover_data" in body
     cover_img = _decode_cover(body.get("cover_data", "")) if body.get("cover_data") else None
@@ -567,7 +544,6 @@ async def h_org_profile(request: web.Request):
     }
     if is_admin:
         data["total_reports"] = total_reports
-        data["qtickets"] = bool(org["qtickets_token"])
     data["events"] = events
     return web.json_response(data)
 
@@ -666,15 +642,12 @@ async def h_cover(request: web.Request):
                         headers={"Cache-Control": "public, max-age=86400"})
 
 
-# ---------- qtickets ----------
+# ---------- статус организатора ----------
 
-async def h_qtickets_status(request: web.Request):
+async def h_me_status(request: web.Request):
     me = request["user"]["id"]
     u = db.get_user(me)
-    return web.json_response({
-        "connected": bool(u and u["qtickets_token"]),
-        "verified": bool(u and u["is_verified"]),
-    })
+    return web.json_response({"verified": bool(u and u["is_verified"])})
 
 
 async def h_request_verify(request: web.Request):
@@ -704,80 +677,6 @@ async def h_request_verify(request: web.Request):
         except Exception:
             pass
     return web.json_response({"ok": True})
-
-
-async def h_qtickets_connect(request: web.Request):
-    me = request["user"]["id"]
-    body = await request.json()
-    token = (body.get("token") or "").strip()
-    if not token:
-        # пустой токен = отключить
-        db.set_qtickets_token(me, "")
-        return web.json_response({"connected": False})
-    ok = await asyncio.get_event_loop().run_in_executor(None, qtickets.check_token, token)
-    if not ok:
-        return web.json_response({"error": "Токен не подошёл. Проверь, что скопировал целиком из «Настройки → Основное» в qtickets."}, status=400)
-    db.set_qtickets_token(me, token)
-    # сразу импортируем все события организатора из qtickets
-    imported = await _import_qtickets_events(me, token)
-    return web.json_response({"connected": True, "imported": imported})
-
-
-async def _import_qtickets_events(org_id: int, token: str) -> int:
-    """Тянет события организатора из qtickets и заводит недостающие в боте."""
-    loop = asyncio.get_event_loop()
-    events = await loop.run_in_executor(None, qtickets.list_my_events, token)
-    created = 0
-    verified = db.is_verified(org_id)
-    for ev in events:
-        qt_id = ev.get("id")
-        if not qt_id or db.event_by_qt(org_id, int(qt_id)):
-            continue
-        starts, ends = qtickets.event_times(ev)
-        if not starts or starts < time.time() - 6 * 3600:
-            continue  # пропускаем прошедшие/без даты
-        data = {
-            "title": (ev.get("name") or "Событие")[:80],
-            "description": (ev.get("description") or "")[:1500],
-            "starts_at": starts, "ends_at": ends,
-            "area": ev.get("place_name") or "",
-            "address": ev.get("place_address") or "",
-            "city": "Москва",
-            "pay_url": ev.get("site_url") or f"https://qtickets.ru/event/{qt_id}",
-            "qt_event_id": int(qt_id),
-            "cover": "ultramarine",
-        }
-        # импортированные с реального qtickets-аккаунта считаем достоверными
-        status = "active" if verified else "pending"
-        eid = db.create_event(org_id, data, status=status)
-        created += 1
-    return created
-
-
-async def h_qtickets_import(request: web.Request):
-    """Повторный импорт/синхронизация событий организатора из qtickets."""
-    me = request["user"]["id"]
-    u = db.get_user(me)
-    if not u or not u["qtickets_token"]:
-        return web.json_response({"error": "Сначала подключи qtickets", "need": "connect"}, status=400)
-    imported = await _import_qtickets_events(me, u["qtickets_token"])
-    return web.json_response({"ok": True, "imported": imported})
-
-
-async def h_qtickets_preview(request: web.Request):
-    """Показать типы билетов по ссылке qtickets (для формы создания)."""
-    me = request["user"]["id"]
-    u = db.get_user(me)
-    if not u or not u["qtickets_token"]:
-        return web.json_response({"error": "Сначала подключи qtickets в профиле", "need": "connect"}, status=400)
-    body = await request.json()
-    eid = qtickets.parse_event_id(body.get("url", ""))
-    if not eid:
-        return web.json_response({"error": "Не похоже на ссылку qtickets на событие"}, status=400)
-    loop = asyncio.get_event_loop()
-    types = await loop.run_in_executor(None, qtickets.get_ticket_types, u["qtickets_token"], eid)
-    fields = await loop.run_in_executor(None, qtickets.event_fields, u["qtickets_token"], eid)
-    return web.json_response({"qt_event_id": eid, "types": types, "fields": fields})
 
 
 async def h_attend(request: web.Request):
@@ -916,8 +815,6 @@ async def h_my_tickets(request: web.Request):
             "title": t["title"], "starts_at": t["starts_at"], "ends_at": t["ends_at"],
             "area": t["area"], "age_limit": t["age_limit"], "cover": t["cover"],
             "address": t["address"],
-            # билет через qtickets: настоящий билет выдаёт qtickets, наш QR не нужен
-            "qtickets": bool(t["qt_event_id"]),
             "has_cover": bool(t["has_cover"]) if "has_cover" in t.keys() else False,
             "cover_ver": t["cover_ver"] if "cover_ver" in t.keys() else 0,
         })
@@ -1147,54 +1044,6 @@ async def h_index(request: web.Request):
     return web.FileResponse(WEBAPP_DIR / "index.html")
 
 
-# ---------- авто-отслеживание оплат qtickets ----------
-
-async def poll_qtickets_payments(bot) -> None:
-    """Опрашивает qtickets по привязанным событиям и автоматически выдаёт билеты
-    тем, кто оплатил (матчинг по telegram_user / utm_content)."""
-    loop = asyncio.get_event_loop()
-    for e in db.events_with_qtickets():
-        token, qt_eid, event_id = e["qtickets_token"], e["qt_event_id"], e["id"]
-        # авто sold-out: спрашиваем остаток мест у qtickets
-        try:
-            sold = await loop.run_in_executor(None, qtickets.is_sold_out, token, qt_eid)
-            if sold is not None and bool(e["soldout"]) != sold:
-                db.set_soldout(event_id, e["org_id"], sold, force=True)
-        except Exception as ex:
-            log.warning("auto soldout event=%s failed: %s", event_id, ex)
-        try:
-            orders = await loop.run_in_executor(None, qtickets.list_paid_orders, token, qt_eid)
-        except Exception as ex:
-            log.warning("poll qtickets event=%s failed: %s", event_id, ex)
-            continue
-        for order in orders:
-            oid = str(order.get("id") or order.get("uniqid") or "")
-            if not oid or db.order_already_used(oid):
-                continue
-            tg_id = qtickets.extract_tg_id(order)
-            if not tg_id:
-                continue  # не смогли сопоставить — оставим на ручное подтверждение
-            db.upsert_user(tg_id, None, None)
-            existing = db.get_user_ticket(event_id, tg_id)
-            if existing and existing["kind"] == "paid_pending":
-                db.mark_paid_by_order(existing["code"], oid)
-                code = existing["code"]
-            elif existing:
-                continue  # уже есть билет — пропускаем
-            else:
-                code = db.create_paid_ticket_direct(event_id, tg_id, oid)
-                if not code:
-                    continue
-            try:
-                await bot.send_message(
-                    tg_id,
-                    f"Оплата получена — билет на «{e['title']}» у тебя! 🎟\nСмотри вкладку «Билеты».",
-                )
-            except Exception:
-                pass
-            log.info("qtickets auto-issued ticket event=%s tg=%s order=%s", event_id, tg_id, oid)
-
-
 def make_web_app(bot) -> web.Application:
     app = web.Application(middlewares=[security_middleware, auth_middleware],
                           client_max_size=5 * 1024 * 1024)  # 5MB max body
@@ -1234,10 +1083,7 @@ def make_web_app(bot) -> web.Application:
         web.post("/api/admin/refs", h_admin_set_refs),
         web.post("/api/admin/ticket/delete", h_admin_delete_ticket),
         web.post("/api/admin/ticket/update", h_admin_update_ticket),
-        web.get("/api/qtickets/status", h_qtickets_status),
-        web.post("/api/qtickets/connect", h_qtickets_connect),
-        web.post("/api/qtickets/preview", h_qtickets_preview),
-        web.post("/api/qtickets/import", h_qtickets_import),
+        web.get("/api/me/status", h_me_status),
         web.post("/api/request_verify", h_request_verify),
     ])
     return app
