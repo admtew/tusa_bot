@@ -367,6 +367,10 @@ input[type="date"].input,input[type="time"].input{color-scheme:dark;min-height:5
 /* пока открыта клавиатура — прячем нижнюю панель и таббар, чтобы не перекрывали поле ввода */
 body.kbd .wiz-cta{transform:translateY(160%);opacity:0;pointer-events:none;}
 body.kbd .tabbar{transform:translateY(140%);}
+/* кнопка «опустить клавиатуру» — видна только при наборе */
+#kbd-down{position:fixed;right:14px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:95;display:none;align-items:center;gap:7px;padding:9px 14px;border-radius:100px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;box-shadow:0 10px 30px -8px rgba(0,0,0,.6);}
+#kbd-down:active{transform:scale(.96);}
+body.kbd #kbd-down{display:inline-flex;animation:toastIn .2s ease;}
 /* запас прокрутки, чтобы поле с фокусом всегда уезжало выше клавиатуры */
 .create .input,.create .textarea,.create .step-input{scroll-margin-top:90px;scroll-margin-bottom:300px;}
 .recap{display:flex;gap:13px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0 0 18px;}
@@ -462,6 +466,10 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 </header>
 <main class="screen-area" id="screen"></main>
 <nav class="tabbar" id="tabbar"></nav>
+<button id="kbd-down" onclick="dismissKeyboard()" aria-label="Опустить клавиатуру">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+  <span>готово</span>
+</button>
 <div id="overlays"></div>
 <script>
 /* ───────── базовое ───────── */
@@ -1136,28 +1144,29 @@ function wizNext(){
   }
   wizStep(Math.min(2, CREATE_STEP+1));
 }
-/* ── клавиатура не должна перекрывать поле ввода ── */
-(function setupKeyboardScroll(){
+/* ── клавиатура: НЕ поднимаем экран. Просто прячем нижнюю панель при наборе
+      и показываем кнопку «опустить клавиатуру». ── */
+(function setupKeyboardUx(){
   if(window.__kbdInit) return; window.__kbdInit = true;
   let blurTimer = null;
   function isField(el){ return el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA'); }
   document.addEventListener('focusin', function(ev){
     if(!isField(ev.target)) return;
     clearTimeout(blurTimer);
-    document.body.classList.add('kbd');
-    const el = ev.target;
-    // даём клавиатуре открыться, затем поднимаем поле в видимую зону
-    setTimeout(function(){
-      try{ el.scrollIntoView({block:'center', behavior:'smooth'}); }
-      catch(e){ try{ el.scrollIntoView(); }catch(_){} }
-    }, 280);
+    document.body.classList.add('kbd');   // прячет .wiz-cta и .tabbar, показывает кнопку
   });
   document.addEventListener('focusout', function(ev){
     if(!isField(ev.target)) return;
-    // небольшая задержка: при переходе между полями панель не мигает
+    // задержка, чтобы при переходе между полями панель не мигала
     blurTimer = setTimeout(function(){ document.body.classList.remove('kbd'); }, 250);
   });
 })();
+// кнопка «опустить клавиатуру» — снимает фокус с поля
+function dismissKeyboard(){
+  const el = document.activeElement;
+  if(el && (el.tagName==='INPUT' || el.tagName==='TEXTAREA')) el.blur();
+  document.body.classList.remove('kbd');
+}
 function recapCard(F){
   const img = F.cover_data || F.cover_url;
   const st = img ? `style="background-image:url(${img});background-size:cover;background-position:center"` : '';
