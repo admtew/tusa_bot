@@ -428,6 +428,15 @@ img.avatar{background:linear-gradient(135deg,#2a2a2e,#3a3a40);}
 .chip:active,.seg-opt:active,.city-row:active{transform:scale(.97);}
 .btn:active{transform:scale(.98);}
 
+/* тур: доп. города */
+.tour-sec{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);}
+.tour-sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:12px;}
+.tour-sec-h .mono{font-size:11px;letter-spacing:1px;color:var(--text-2);}
+.tour-stop{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:10px;animation:fadeUp .3s cubic-bezier(.22,.61,.36,1);}
+.tour-stop-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
+.tour-stop-top .mono{font-size:11px;letter-spacing:1px;color:var(--text-3);}
+.tour-x{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border:1px solid var(--line);}
+
 /* черновик создания */
 .draft-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line-2);border-radius:14px;padding:12px 14px;margin:0 0 16px;animation:fadeUp .34s cubic-bezier(.22,.61,.36,1);}
 .draft-banner-txt{font-size:13px;color:var(--text-1);flex:1;min-width:140px;}
@@ -1023,8 +1032,15 @@ function blankForm(){
   return { title:'', description:'', date:'', time:'18:00', endtime:'', area:'', address:'', capacity:0,
     age_limit:'18+', price_num:'', pay_url:'', refs_needed:0, channel:'', genre:'',
     cover:'violet', cover_data:'', cover_url:'', photos_data:[], promo_code:'',
-    city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва' };
+    city: (CITY && CITY!==ALL_CITIES) ? CITY : 'Москва',
+    tour: [] };   // доп. города тура: [{city,date,time,area,address,pay_url}]
 }
+// пустой город-остановка тура
+function blankStop(){
+  return { city:(CITY && CITY!==ALL_CITIES)?CITY:'Москва', date:'', time:'18:00', area:'', address:'', pay_url:'' };
+}
+function addStop(){ if(!FORM.tour) FORM.tour=[]; FORM.tour.push(blankStop()); haptic(); renderCreate(); }
+function removeStop(i){ FORM.tour.splice(i,1); haptic(); renderCreate(); }
 let FORM = blankForm();
 let EDIT_ID = null;   // если задан — режим редактирования
 
@@ -1032,17 +1048,24 @@ let EDIT_ID = null;   // если задан — режим редактиров
 const DRAFT_KEY = 'tusa_draft';
 function draftMeaningful(f){
   return !!(f && (String(f.title||'').trim() || String(f.description||'').trim()
-    || String(f.area||'').trim() || String(f.address||'').trim() || String(f.date||'').trim()));
+    || f.cover_data || (f.photos_data&&f.photos_data.length)
+    || String(f.area||'').trim() || String(f.address||'').trim() || String(f.date||'').trim()
+    || (f.tour && f.tour.length)));
 }
 function saveDraft(){
   if(EDIT_ID) return;                 // правку существующего не считаем черновиком
+  if(!draftMeaningful(FORM)){ clearDraft(); return; }
+  const f = Object.assign({}, FORM);
+  // пробуем сохранить целиком (включая фото). Если не влезает в localStorage —
+  // откатываемся на версию без тяжёлых фото, чтобы хотя бы текст не потерять.
   try{
-    if(draftMeaningful(FORM)){
-      // фото в localStorage не кладём (тяжёлые) — сохраняем только текст/настройки
-      const f = Object.assign({}, FORM); f.cover_data=''; f.cover_url=''; f.photos_data=[];
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ f:f, step:CREATE_STEP, ts:Date.now() }));
-    } else { clearDraft(); }
-  }catch(e){}
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ f:f, step:CREATE_STEP, ts:Date.now() }));
+  }catch(e){
+    try{
+      const lite = Object.assign({}, f); lite.cover_data=''; lite.photos_data=[];
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ f:lite, step:CREATE_STEP, ts:Date.now() }));
+    }catch(e2){}
+  }
 }
 function loadDraft(){
   try{ const s=localStorage.getItem(DRAFT_KEY); return s?JSON.parse(s):null; }catch(e){ return null; }
@@ -1085,7 +1108,7 @@ async function editEvent(id){
     price_num:priceNum, pay_url:e.pay_url||'', refs_needed:e.refs_needed||0, channel:e.channel||'',
     genre:e.genre||'', cover:e.cover||'violet', cover_data:'',
     cover_url: e.has_cover ? ('/cover/'+id+'?v='+(e.cover_ver||0)) : '',
-    photos_data:[], promo_code:e.promo_code||'', city:e.city||'Москва',
+    photos_data:[], promo_code:e.promo_code||'', city:e.city||'Москва', tour:[],
   };
   EDIT_ID = id; CREATE_STEP = 0;
   TAB='create'; renderTabbar(); $screen.scrollTop=0; renderCreate();
@@ -1205,6 +1228,25 @@ function renderCreate(){
       <input class="input" placeholder="м. Курская" value="${esc(F.area)}" oninput="FORM.area=this.value"></div>
     <div class="field"><div class="field-lab"><span class="mono">АДРЕС</span></div>
       <input class="input" placeholder="Басманный пер. 8с1" value="${esc(F.address)}" oninput="FORM.address=this.value"></div>
+    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА НА БИЛЕТЫ</span><span class="field-hint">если платно — куда вести гостя</span></div>
+      <input class="input" inputmode="url" placeholder="https://…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
+    ${EDIT_ID?'':`
+    <div class="tour-sec">
+      <div class="tour-sec-h"><span class="mono">ТУР · ДРУГИЕ ГОРОДА</span><span class="field-hint">одна афиша — несколько дат</span></div>
+      ${(F.tour||[]).map((s,i)=>`
+        <div class="tour-stop">
+          <div class="tour-stop-top"><span class="mono">Город ${i+2}</span>
+            <button class="tour-x" onclick="removeStop(${i})">${I.close(16,'var(--text-2)')}</button></div>
+          <input class="input" list="city-options" placeholder="Город" value="${esc(s.city)}" oninput="FORM.tour[${i}].city=this.value">
+          <div class="field-grid" style="padding:8px 0 0">
+            <input class="input" type="date" value="${esc(s.date)}" onchange="FORM.tour[${i}].date=this.value">
+            <input class="input" type="time" value="${esc(s.time)}" onchange="FORM.tour[${i}].time=this.value">
+          </div>
+          <input class="input" style="margin-top:8px" placeholder="Адрес / площадка" value="${esc(s.address)}" oninput="FORM.tour[${i}].address=this.value">
+          <input class="input" style="margin-top:8px" inputmode="url" placeholder="Ссылка на билеты (необязательно)" value="${esc(s.pay_url)}" oninput="FORM.tour[${i}].pay_url=this.value">
+        </div>`).join('')}
+      <button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="addStop()">${I.plus(16,'var(--text-1)')} Добавить город</button>
+    </div>`}
   </div>`;
 
   // ── ШАГ 3: условия ──
@@ -1217,8 +1259,6 @@ function renderCreate(){
       </div></div>
     <div class="field"><div class="field-lab"><span class="mono">ПРОМОКОД</span><span class="field-hint">скидочный код для гостей</span></div>
       <input class="input" placeholder="PROMO2024" value="${esc(F.promo_code)}" oninput="FORM.promo_code=this.value" maxlength="40"></div>
-    <div class="field"><div class="field-lab"><span class="mono">ССЫЛКА НА БИЛЕТЫ</span><span class="field-hint">если платно — куда вести гостя</span></div>
-      <input class="input" inputmode="url" placeholder="https://…" value="${esc(F.pay_url)}" oninput="FORM.pay_url=this.value"></div>
     <div class="field-grid">
       <div class="field"><div class="field-lab"><span class="mono">ЛИМИТ МЕСТ</span><span class="field-hint">0 = без лимита</span></div>
         <div class="stepper"><button onclick="stepCap(-10)">−</button><input class="step-input" id="f-cap" inputmode="numeric" value="${F.capacity}" oninput="this.value=this.value.replace(/\\D/g,'');FORM.capacity=+this.value||0"><button onclick="stepCap(10)">+</button></div></div>
@@ -1332,9 +1372,31 @@ async function publish(){
     payload.photos_data = F.photos_data;
     const r = await api('/api/events',{method:'POST',body:JSON.stringify(payload)});
     haptic(); _feedCache.ts=0;
-    toast(r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише');
+
+    // ── тур: остальные города как отдельные события с той же афишей ──
+    const stops = (F.tour||[]).filter(function(s){
+      const st = (s.date && s.time) ? Math.floor(new Date(s.date+'T'+s.time).getTime()/1000) : 0;
+      return st && st > Date.now()/1000 && (s.city||'').trim();
+    });
+    let created = 1;
+    for(const s of stops){
+      const st = Math.floor(new Date(s.date+'T'+s.time).getTime()/1000);
+      const p = {
+        title:F.title.trim(), description:F.description, starts_at:st, ends_at:0,
+        area:s.area||'', address:s.address||'', capacity:F.capacity, age_limit:F.age_limit,
+        price_text:priceText, pay_url:s.pay_url||'', refs_needed:0,
+        channel:'', genre:F.genre, cover:F.cover, city:(s.city||'Москва').trim(),
+        promo_code:F.promo_code||'',
+      };
+      if(F.cover_data) p.cover_data = F.cover_data;   // та же афиша на все города
+      try{ await api('/api/events',{method:'POST',body:JSON.stringify(p)}); created++; }
+      catch(e){ /* один город не создался — не валим весь тур */ }
+    }
+
+    const isTour = created > 1;
+    toast(isTour ? ('Тур создан ✓ Городов: '+created) : (r.status==='pending' ? 'Отправлено на модерацию ✓' : 'Party опубликована в афише'));
     FORM = blankForm(); clearDraft();   // черновик больше не нужен
-    if(r.status==='pending'){ PSEG='host'; go('profile'); }
+    if(isTour || r.status==='pending'){ PSEG='host'; go('profile'); }
     else { go('feed'); setTimeout(function(){ openDetail(r.id); }, 350); }
   }catch(err){ toast(err.message,false); }
 }
